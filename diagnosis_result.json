@@ -1,0 +1,54 @@
+{
+    "general_diagnosis": [
+        {
+            "did": "a1b2c",
+            "diagnosis": "Cholestatic Hepatitis Secondary to Drug Exposure Acute",
+            "indicators_point": [
+                "Patient presents with jaundice (eyes are yellow).",
+                "Elevated AST (450 U/L), ALT (620 U/L), Alk Phos (180 U/L), and Total Bilirubin (5.2 mg/dL).",
+                "Recent history of Amoxicillin-Clavulanate (Augmentin) use for a dental abscess.",
+                "Patient reports itching (pruritus).",
+                "Patient reports nausea."
+            ],
+            "reasoning": "The patient's presentation of jaundice, significantly elevated liver enzymes (AST, ALT, Alk Phos, Bilirubin), and pruritus are highly suggestive of a cholestatic process. The recent course of Amoxicillin-Clavulanate, a known hepatotoxic agent, strongly points towards a drug-induced liver injury (DILI) as the likely cause, particularly a cholestatic pattern. The nausea is also consistent with liver dysfunction. The INR is only borderline elevated, suggesting the synthetic function of the liver is not yet severely compromised.",
+            "followup_question": "Have you experienced any fatigue or a general feeling of being unwell?"
+        },
+        {
+            "did": "d3e4f",
+            "diagnosis": "Viral Hepatitis of Unknown Etiology Acute",
+            "indicators_point": [
+                "Patient presents with jaundice (eyes are yellow).",
+                "Elevated AST (450 U/L), ALT (620 U/L), Alk Phos (180 U/L), and Total Bilirubin (5.2 mg/dL).",
+                "Patient reports nausea.",
+                "Patient reports itching (pruritus)."
+            ],
+            "reasoning": "The constellation of jaundice, elevated transaminases (AST, ALT), and alkaline phosphatase, along with symptoms like nausea and pruritus, are classic signs of hepatitis. While drug-induced hepatitis is a strong consideration given the recent Augmentin use, viral hepatitis (e.g., Hepatitis A, B, or C) remains a significant differential diagnosis that needs to be ruled out, especially given the acute presentation and elevated bilirubin.",
+            "followup_question": "Have you had any recent fever or chills?"
+        }
+    ],
+    "hepato_diagnosis": [
+        {
+            "did": "a1b2c",
+            "diagnosis": "Drug-Induced Liver Injury secondary to Acetaminophen Overdose, Acute",
+            "indicators_point": [
+                "Patient reports taking 'Tylenol PM' and 'Extra Strength Tylenol' frequently for lingering jaw pain.",
+                "Patient states they stopped taking Tylenol yesterday.",
+                "Elevated AST (450 U/L) and ALT (620 U/L) from recent labs.",
+                "Overt Jaundice (Total Bilirubin: 5.2 mg/dL)."
+            ],
+            "reasoning": "The patient's recent frequent use of acetaminophen (Tylenol) for pain, coupled with significantly elevated AST and ALT levels and overt jaundice, strongly suggests drug-induced liver injury (DILI). Acetaminophen is a common cause of DILI, especially with overuse. The acute elevation in liver enzymes and bilirubin points to an acute process.",
+            "followup_question": "Have you taken any other over-the-counter medications or herbal supplements recently?"
+        },
+        {
+            "did": "d3e4f",
+            "diagnosis": "Cholestatic Liver Disease secondary to Biliary Obstruction, Suspected",
+            "indicators_point": [
+                "Patient reports \"My eyes are yellow\" and \"Now I look like I have a bad tan that won't go away.\"",
+                "Elevated Alk Phos (180 U/L) and Total Bilirubin (5.2 mg/dL) from recent labs.",
+                "Patient denies abdominal pain, particularly in the upper right quadrant."
+            ],
+            "reasoning": "The elevated alkaline phosphatase and total bilirubin, along with jaundice, are indicative of cholestasis, suggesting a problem with bile flow. While the patient denies RUQ pain, this does not rule out biliary obstruction, which can sometimes present with less specific symptoms or primarily with jaundice and elevated cholestatic markers. The denial of RUQ pain makes gallstone cholecystitis less likely but doesn't exclude other forms of obstruction.",
+            "followup_question": "Have you experienced any itching or pruritus recently?"
+        }
+    ]
+}

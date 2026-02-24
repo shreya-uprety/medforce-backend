@@ -1,0 +1,323 @@
+[
+    {
+        "content": "What brings you in today?",
+        "qid": "00001",
+        "rank": 999,
+        "status": "asked",
+        "answer": "My eyes are yellow, my sister saw it, two days ago. Now I look like I have a bad tan that won't go away.",
+        "headline": "Chief Complaint",
+        "domain": "Symptom Triage",
+        "system_affected": "General",
+        "clinical_intent": "To understand the primary reason for the patient's current visit.",
+        "tags": [
+            "reason for visit",
+            "chief complaint",
+            "presenting problem"
+        ]
+    },
+    {
+        "content": "Current Medications",
+        "qid": "00004",
+        "rank": 999,
+        "status": "asked",
+        "answer": "Lisinopril for my blood pressure. I stopped taking Tylenol yesterday.",
+        "headline": "Current Medications",
+        "domain": "Medication Review",
+        "system_affected": "General",
+        "clinical_intent": "To ascertain the patient's current medication regimen for potential interactions, adherence issues, or side effects.",
+        "tags": [
+            "medication",
+            "current",
+            "review",
+            "adherence"
+        ]
+    },
+    {
+        "content": "Drug Allergies",
+        "qid": "00005",
+        "rank": 999,
+        "status": "asked",
+        "answer": "I take Lisinopril for my blood pressure. I stopped taking Tylenol yesterday. I was taking a bunch of it for a toothache.",
+        "headline": "Drug Allergies",
+        "domain": "Medical History",
+        "system_affected": "General",
+        "clinical_intent": "To identify potential adverse drug reactions and contraindications for future treatments.",
+        "tags": [
+            "allergy",
+            "medication",
+            "adverse reaction"
+        ]
+    },
+    {
+        "content": "Past Surgeries",
+        "qid": "00006",
+        "rank": 11,
+        "status": null,
+        "answer": null,
+        "headline": "Past Surgical History",
+        "domain": "Surgical History",
+        "system_affected": "General",
+        "clinical_intent": "To gather information on previous surgical interventions that may impact current health status or future care.",
+        "tags": [
+            "surgery",
+            "operation",
+            "medical history"
+        ]
+    },
+    {
+        "qid": "a1b2c",
+        "content": "Have you traveled recently or been exposed to anyone with similar symptoms?",
+        "status": null,
+        "answer": null,
+        "rank": 9,
+        "headline": "Recent Travel and Exposure",
+        "domain": "Symptom Triage",
+        "system_affected": "General",
+        "clinical_intent": "To identify potential infectious disease exposure or environmental factors contributing to current symptoms.",
+        "tags": [
+            "travel",
+            "exposure",
+            "infectious disease",
+            "symptoms"
+        ]
+    },
+    {
+        "qid": "d3e4f",
+        "content": "Have you had any recent changes in your diet or appetite?",
+        "status": "asked",
+        "answer": "So just know, I haven't. Heavy experience.",
+        "rank": 999,
+        "headline": "Dietary Changes",
+        "domain": "Social History",
+        "system_affected": "Gastrointestinal",
+        "clinical_intent": "To assess the impact of nutritional intake and appetite changes on health status.",
+        "tags": [
+            "diet",
+            "appetite",
+            "nutrition",
+            "gastrointestinal"
+        ]
+    },
+    {
+        "qid": "6d2dbd3a-4597-4735-9169-2e2864b1bb59",
+        "content": "Have you experienced any abdominal pain, particularly in the upper right side?",
+        "status": "asked",
+        "answer": "No, I want to experience any of that.",
+        "rank": 999,
+        "headline": "Abdominal Pain Assessment",
+        "domain": "Symptom Triage",
+        "system_affected": "Gastrointestinal",
+        "clinical_intent": "To evaluate the presence and characteristics of abdominal pain, particularly in the upper right quadrant, suggestive of biliary issues.",
+        "tags": [
+            "abdominal pain",
+            "upper right quadrant",
+            "biliary",
+            "gastrointestinal"
+        ]
+    },
+    {
+        "qid": "3c9ff1f6-1679-41da-b74b-fd013fc1832b",
+        "content": "Have you noticed any changes in the color of your urine or stools?",
+        "status": "asked",
+        "answer": "So just know, I haven't. Heavy experience.",
+        "rank": 999,
+        "headline": "Urine and Stool Color Changes",
+        "domain": "Symptom Triage",
+        "system_affected": "Gastrointestinal",
+        "clinical_intent": "To identify potential indicators of liver, gallbladder, or gastrointestinal dysfunction.",
+        "tags": [
+            "urine color",
+            "stool color",
+            "jaundice",
+            "gastrointestinal"
+        ]
+    },
+    {
+        "qid": "b6a81a22-fbce-40ae-b3bf-55fac2debdab",
+        "content": "Have you experienced any nausea, vomiting, or abdominal pain, particularly in the upper right quadrant?",
+        "status": "asked",
+        "answer": "Yes. I have noticed that nausea.",
+        "rank": 999,
+        "headline": "Nausea, Vomiting, and RUQ Pain",
+        "domain": "Symptom Triage",
+        "system_affected": "Gastrointestinal",
+        "clinical_intent": "To evaluate for symptoms indicative of gastrointestinal distress, particularly related to the hepatobiliary system.",
+        "tags": [
+            "nausea",
+            "vomiting",
+            "abdominal pain",
+            "RUQ pain",
+            "gastrointestinal"
+        ]
+    },
+    {
+        "qid": "f0b2b0ab-9463-43b8-850f-b68c3bcfcba6",
+        "content": "Have you noticed any changes in the color of your urine or stools, such as dark urine or pale/clay-colored stools?",
+        "status": "asked",
+        "answer": "My eyes are yellow, my sister saw it, two days ago. Now I look like I have a bad tan that won't go away.",
+        "rank": 999,
+        "headline": "Urine/Stool Color Assessment",
+        "domain": "Symptom Triage",
+        "system_affected": "Gastrointestinal",
+        "clinical_intent": "To specifically inquire about changes in urine (dark) and stool (pale/clay-colored) as indicators of potential liver or biliary issues.",
+        "tags": [
+            "urine color",
+            "stool color",
+            "jaundice",
+            "hepatobiliary",
+            "gastrointestinal"
+        ]
+    },
+    {
+        "qid": "01c62b90-a8a4-4be2-abfa-0aede84c1697",
+        "content": "Have you experienced any itching or pruritus recently?",
+        "status": null,
+        "answer": null,
+        "rank": 6,
+        "headline": "Pruritus Assessment",
+        "domain": "Symptom Triage",
+        "system_affected": "Integumentary",
+        "clinical_intent": "To assess for the presence of itching, a common symptom of various dermatological or systemic conditions.",
+        "tags": [
+            "itching",
+            "pruritus",
+            "skin",
+            "symptom"
+        ]
+    },
+    {
+        "qid": "b79931f0-06f6-46b5-88ce-7dac75dd74d9",
+        "content": "Have you had any fever or chills?",
+        "status": null,
+        "answer": null,
+        "rank": 1,
+        "headline": "Fever and Chills Assessment",
+        "domain": "Symptom Triage",
+        "system_affected": "General",
+        "clinical_intent": "To screen for signs of infection or inflammatory processes.",
+        "tags": [
+            "fever",
+            "chills",
+            "infection",
+            "symptom"
+        ]
+    },
+    {
+        "qid": "472cda62-8129-4507-a06b-6968fab13c85",
+        "content": "Have you had any recent exposure to new sexual partners or shared needles?",
+        "status": null,
+        "answer": null,
+        "rank": 10,
+        "headline": "Sexual and Needle Exposure",
+        "domain": "Social History",
+        "system_affected": "General",
+        "clinical_intent": "To assess risk factors for sexually transmitted infections and blood-borne pathogens.",
+        "tags": [
+            "sexual history",
+            "needle sharing",
+            "STI",
+            "risk assessment"
+        ]
+    },
+    {
+        "qid": "631fef30-e247-46b6-bae9-b86ca606aba7",
+        "content": "Have you experienced any confusion or changes in your mental state recently?",
+        "status": null,
+        "answer": null,
+        "rank": 4,
+        "headline": "Cognitive Status Change",
+        "domain": "Symptom Triage",
+        "system_affected": "Neurological",
+        "clinical_intent": "To identify potential neurological deficits, delirium, or changes in mental status.",
+        "tags": [
+            "confusion",
+            "mental status",
+            "neurological",
+            "symptom"
+        ]
+    },
+    {
+        "qid": "297f59f0-bbd8-47ec-9445-d28aadcbc5d9",
+        "content": "Have you experienced any fatigue or a general feeling of being unwell?",
+        "status": null,
+        "answer": null,
+        "rank": 2,
+        "headline": "Fatigue Assessment",
+        "domain": "Symptom Triage",
+        "system_affected": "General",
+        "clinical_intent": "To evaluate for generalized malaise or fatigue, which can indicate a wide range of underlying conditions.",
+        "tags": [
+            "fatigue",
+            "malaise",
+            "symptom",
+            "well-being"
+        ]
+    },
+    {
+        "qid": "c3cf6c9f-add6-4014-a959-e45a3e843a01",
+        "content": "Have you experienced any unintentional weight loss recently?",
+        "status": null,
+        "answer": null,
+        "rank": 3,
+        "headline": "Unintentional Weight Loss",
+        "domain": "Symptom Triage",
+        "system_affected": "General",
+        "clinical_intent": "To screen for potential underlying conditions such as malignancy, metabolic disorders, or malabsorption.",
+        "tags": [
+            "weight loss",
+            "unintentional",
+            "symptom",
+            "screening"
+        ]
+    },
+    {
+        "qid": "10b28c75-7de5-482c-9b84-671577cf904c",
+        "content": "Have you experienced any itching or skin rashes recently?",
+        "status": null,
+        "answer": null,
+        "rank": 5,
+        "headline": "Itching and Rash Assessment",
+        "domain": "Symptom Triage",
+        "system_affected": "Integumentary",
+        "clinical_intent": "To assess for dermatological symptoms like itching and rashes, which can indicate allergic reactions, infections, or other skin conditions.",
+        "tags": [
+            "itching",
+            "rash",
+            "skin",
+            "dermatology"
+        ]
+    },
+    {
+        "qid": "fb2da52b-5801-4938-a93d-8befd738f9d3",
+        "content": "Do you have any history of gallstones or gallbladder disease?",
+        "status": null,
+        "answer": null,
+        "rank": 7,
+        "headline": "Gallbladder History",
+        "domain": "Medical History",
+        "system_affected": "Gastrointestinal",
+        "clinical_intent": "To identify pre-existing gallbladder conditions that may be relevant to current gastrointestinal symptoms or treatment plans.",
+        "tags": [
+            "gallstones",
+            "gallbladder disease",
+            "GI history"
+        ]
+    },
+    {
+        "qid": "4cd955d1-48fc-40d7-92f7-34c1b2a67e28",
+        "content": "Have you taken any other over-the-counter medications or herbal supplements recently?",
+        "status": null,
+        "answer": null,
+        "rank": 8,
+        "headline": "OTC and Supplement Use",
+        "domain": "Medication Review",
+        "system_affected": "General",
+        "clinical_intent": "To obtain a comprehensive list of all ingested substances, including over-the-counter medications and herbal supplements, for potential interactions or side effects.",
+        "tags": [
+            "medication review",
+            "OTC",
+            "supplements",
+            "herbal"
+        ]
+    }
+]

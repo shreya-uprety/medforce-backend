@@ -1,0 +1,258 @@
+{
+  "case_1_patient_journey": [
+    {
+      "role": "patient",
+      "message": "I am the patient, my name is Sarah Thompson"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "I prefer to be contacted by text message"
+    },
+    {
+      "role": "agent",
+      "message": "Could I please have Sarah Thompson's date of birth for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "15/03/1990"
+    },
+    {
+      "role": "agent",
+      "message": "Hello Sarah, could I please have your NHS number to get your record ready for you?"
+    },
+    {
+      "role": "patient",
+      "message": "9876543210"
+    },
+    {
+      "role": "agent",
+      "message": "Could I please get your mobile number, Sarah?"
+    },
+    {
+      "role": "patient",
+      "message": "07700900055"
+    },
+    {
+      "role": "agent",
+      "message": "\"Hello Sarah, could you please tell me the name of your usual GP for our records?\""
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Patel"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Sarah Thompson! I've collected all the information we need. We've noted your preference to be contacted via sms. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "patient",
+      "message": "I have been experiencing abdominal pain on the right side, fatigue, and my skin has been a bit yellow. I was referred for suspected liver cirrhosis."
+    },
+    {
+      "role": "agent",
+      "message": "Can you describe the abdominal pain? Where is it located, what does it feel like (e.g., sharp, dull, cramping), how severe is it on a scale of 0-10, and does anything make it better or worse?"
+    },
+    {
+      "role": "patient",
+      "message": "I have hypertension and had gallbladder surgery 5 years ago. My father had liver cirrhosis. I take metformin 500mg twice daily and lisinopril 10mg."
+    },
+    {
+      "role": "agent",
+      "message": "When did the jaundice, abdominal pain, and fatigue start, and how have they progressed? Have there been any recent changes in their severity or frequency?"
+    },
+    {
+      "role": "patient",
+      "message": "No known allergies. I drink about 3 pints of beer most evenings. I don't smoke."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "My pain is about 6 out of 10, mainly in the upper right abdomen. It gets worse after eating fatty food."
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as HIGH priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your HIGH risk assessment, we need to book your consultation within 2 days. Here are the available appointments:\n\n  1. 2026-02-20 at 09:00 with Dr. Available\n  2. 2026-02-21 at 11:30 with Dr. Available\n  3. 2026-02-21 at 14:00 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "patient",
+      "message": "2"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-02-21\nTime: 11:30\nProvider: Dr. Available\nAppointment ID: APT-PT-1771496104-001-2026-02-21\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Continue taking Metformin as prescribed\n  - Avoid alcohol completely for at least 48 hours before your appointment\n  - If you are on a low-sodium diet, please continue following it\n  - Fasting is required for 8-12 hours before your appointment (water is fine)\n  - A blood test may be required — please wear comfortable clothing with easy access to your arm\n  - Please remind the clinician of your allergies: No known allergies\n  - If you experience any worsening symptoms before your appointment, please contact NHS 111 or attend A&E\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "agent",
+      "message": "Your monitoring period has begun. We'll be monitoring you closely with regular check-ins before your appointment to make sure everything is on track. We have 6 scheduled check-ins planned. If you have any concerns or new symptoms at any time, don't hesitate to message us."
+    },
+    {
+      "role": "agent",
+      "message": "Hi Sarah Thompson, this is your scheduled check-in (day 7 of monitoring).\n\nI see you've been experiencing pain, and I also noted a red flag for jaundice.  Have you noticed any yellowing of your skin or the whites of your eyes? If so, when did you first notice it, and has it been getting worse?"
+    },
+    {
+      "role": "patient",
+      "message": "I am feeling fine, thanks for checking in."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-02-21 is coming up. Our next scheduled check-in is in about 14 days. Given your clinical profile, if you notice any worsening symptoms, please contact NHS 111 or attend A&E without delay."
+    },
+    {
+      "role": "patient",
+      "message": "I have noticed jaundice and confusion over the past few days"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for letting us know. These symptoms need urgent attention. Please contact NHS 111 or visit an urgent care centre. Our clinical team has been notified and will prioritise your case."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for this update. Your case now requires urgent clinical review. Please contact NHS 111 or visit your nearest urgent care centre. Our clinical team has been notified and will prioritise your case. Your appointment on 2026-02-21 at 11:30 remains in place."
+    },
+    {
+      "role": "agent",
+      "message": "Hi Sarah Thompson, this is your scheduled check-in (day 14 of monitoring).\n\nRegarding your pain, can you describe it for me? For example, where is the pain located, what does it feel like (e.g., sharp, dull, aching), how severe is it on a scale of 0 to 10, and what makes it better or worse?"
+    }
+  ],
+  "case_2_helper_journey": [
+    {
+      "role": "helper",
+      "message": "Hello, I'm calling on behalf of my mother, Margaret Wilson. She's quite elderly and not comfortable with technology."
+    },
+    {
+      "role": "agent",
+      "message": "Could you please confirm Margaret Wilson's date of birth for me?"
+    },
+    {
+      "role": "helper",
+      "message": "Email would be best for us"
+    },
+    {
+      "role": "agent",
+      "message": "\"Hello, could you please confirm Margaret Wilson's date of birth for me?\""
+    },
+    {
+      "role": "helper",
+      "message": "Her birthday is 22nd July 1948"
+    },
+    {
+      "role": "agent",
+      "message": "\"Hi there! Could I just get Margaret Wilson's NHS number, please?\""
+    },
+    {
+      "role": "helper",
+      "message": "Her NHS number is 1234567890"
+    },
+    {
+      "role": "agent",
+      "message": "\"Could you please provide Margaret Wilson's phone number for us?\""
+    },
+    {
+      "role": "helper",
+      "message": "You can reach us on 07700111222"
+    },
+    {
+      "role": "agent",
+      "message": "Could you please tell me the name of Margaret Wilson's usual GP?"
+    },
+    {
+      "role": "helper",
+      "message": "Her GP is Dr. Singh at Oakwood Practice"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Margaret Wilson! I've collected all the information we need. We've noted your preference to be contacted via phone. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "helper",
+      "message": "She's been having chest pains and shortness of breath for the past few weeks. The GP referred her for a cardiology consultation."
+    },
+    {
+      "role": "agent",
+      "message": "Can you describe the chest pain? Where is it located, what does it feel like (e.g., sharp, dull, crushing), does it radiate anywhere, and what makes it better or worse?"
+    },
+    {
+      "role": "helper",
+      "message": "She has type 2 diabetes, high blood pressure, and had a mild stroke two years ago. She takes aspirin 75mg, atorvastatin 20mg, metformin 1000mg twice daily, and amlodipine 5mg."
+    },
+    {
+      "role": "agent",
+      "message": "When did the chest pain and shortness of breath start, and have they been constant or intermittent? Have they been getting worse, better, or staying the same?"
+    },
+    {
+      "role": "helper",
+      "message": "She's allergic to penicillin. She doesn't drink or smoke."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "helper",
+      "message": "She says the chest pain is about 4 out of 10, mainly on the left side. It comes and goes, worse when she climbs stairs."
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as LOW priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your LOW risk assessment, we need to book your consultation within 30 days. Here are the available appointments:\n\n  1. 2026-02-20 at 09:00 with Dr. Available\n  2. 2026-02-21 at 11:30 with Dr. Available\n  3. 2026-02-22 at 14:00 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "helper",
+      "message": "The first one please"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-02-20\nTime: 09:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771496104-002-2026-02-20\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Continue taking Metformin as prescribed\n  - Continue taking your statin medication as prescribed\n  - Please remind the clinician of your allergies: penicillin\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "agent",
+      "message": "Your monitoring period has begun. We'll touch base with you a few times before your appointment to make sure everything is on track. We have 3 scheduled check-ins planned. If you have any concerns or new symptoms at any time, don't hesitate to message us."
+    },
+    {
+      "role": "agent",
+      "message": "Hi Margaret Wilson, this is your scheduled check-in (day 14 of monitoring).\n\nCan you describe your chest pain today? For instance, is it sharp, dull, crushing, or a pressure? Where is it located, and does it radiate anywhere else, like your arm, jaw, or back?"
+    },
+    {
+      "role": "helper",
+      "message": "She's doing well overall, feeling much better than last week."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-02-20 is coming up. Our next scheduled check-in is in about 30 days. If you have any concerns about your symptoms, please let us know and we'll escalate to our clinical team."
+    },
+    {
+      "role": "helper",
+      "message": "She was confused and disoriented last night, and the pain is worsening"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for letting us know. We've noted this in your file and our clinical team will review. If symptoms worsen, please contact NHS 111."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for letting us know. We've noted the changes in your file. Your current appointment remains on track. Your appointment on 2026-02-20 at 09:00 remains in place."
+    }
+  ]
+}

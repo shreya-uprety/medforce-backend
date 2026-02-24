@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedForce Gateway</title>
+<style>
+  :root {
+    --bg: #0a0a0b;
+    --surface: #141416;
+    --surface2: #1e1e22;
+    --surface3: #28282e;
+    --border: #2a2a30;
+    --text: #e4e4e7;
+    --text2: #71717a;
+    --text3: #52525b;
+    --accent: #3b82f6;
+    --accent-dim: rgba(59,130,246,0.12);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --yellow: #eab308;
+    --yellow-dim: rgba(234,179,8,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --orange: #f97316;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top Bar ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .topbar-brand {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .topbar-sep { width: 1px; height: 20px; background: var(--border); }
+  .phase-track {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .phase-step {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    color: var(--text3);
+    background: transparent;
+    transition: all 0.3s;
+  }
+  .phase-step.done { color: var(--green); background: var(--green-dim); }
+  .phase-step.active { color: var(--accent); background: var(--accent-dim); }
+  .phase-connector { width: 16px; height: 1px; background: var(--border); }
+  .phase-connector.done { background: var(--green); opacity: 0.4; }
+
+  /* Patient / risk indicators */
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pid-label {
+    font-size: 12px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    color: var(--text2);
+    background: var(--surface2);
+    padding: 4px 8px;
+    border-radius: var(--radius);
+  }
+  .pid-input {
+    font-size: 12px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    color: var(--text);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    outline: none;
+    width: 140px;
+    transition: border-color 0.15s;
+  }
+  .pid-input:focus { border-color: var(--accent); }
+  .pid-input::placeholder { color: var(--text3); }
+  .topbar-btn-sm {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .topbar-btn-sm:hover { background: var(--surface2); color: var(--text); }
+  .topbar-btn-sm.reset { border-color: rgba(239,68,68,0.3); color: var(--red); }
+  .topbar-btn-sm.reset:hover { background: var(--red-dim); }
+  .topbar-btn-sm.go { border-color: rgba(34,197,94,0.3); color: var(--green); }
+  .topbar-btn-sm.go:hover { background: var(--green-dim); }
+  .risk-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 100px;
+  }
+  .risk-badge.none { color: var(--text3); background: var(--surface2); }
+  .risk-badge.low { color: var(--green); background: var(--green-dim); }
+  .risk-badge.medium { color: var(--yellow); background: var(--yellow-dim); }
+  .risk-badge.high { color: var(--orange); background: rgba(249,115,22,0.12); }
+  .risk-badge.critical { color: var(--red); background: var(--red-dim); }
+  .status-indicator {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text3);
+  }
+  .status-indicator.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-indicator.err { background: var(--red); }
+
+  /* ── Main Layout ── */
+  .main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+  }
+
+  /* ── Chat Panel (left) ── */
+  .chat-panel {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .chat-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .chat-toolbar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    margin-right: auto;
+  }
+  .role-btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .role-btn:hover { border-color: var(--text3); color: var(--text); }
+  .role-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .toolbar-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+  }
+  .toolbar-btn:hover { background: var(--surface2); color: var(--text); }
+  .toolbar-btn.danger { color: var(--red); }
+  .toolbar-btn.danger:hover { background: var(--red-dim); }
+
+  /* Messages area */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .msg-row {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+    animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .msg-row.sent { align-self: flex-end; align-items: flex-end; }
+  .msg-row.received { align-self: flex-start; align-items: flex-start; }
+  .msg-row.system { align-self: center; align-items: center; }
+  .msg-bubble {
+    padding: 10px 14px;
+    border-radius: var(--radius-lg);
+    font-size: 14px;
+    line-height: 1.55;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+  .msg-row.sent .msg-bubble {
+    background: var(--accent);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-row.received .msg-bubble {
+    background: var(--surface2);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+  .msg-row.system .msg-bubble {
+    background: transparent;
+    color: var(--text3);
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .msg-meta {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+    padding: 0 4px;
+  }
+
+  /* File attachment bubble */
+  .file-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 6px;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .file-icon { font-size: 14px; }
+  .file-name { opacity: 0.9; }
+  .file-size { opacity: 0.6; font-size: 11px; }
+
+  /* Quick replies */
+  .quick-replies {
+    display: flex;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .quick-reply {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .quick-reply:hover { background: var(--surface2); color: var(--text); border-color: var(--text3); }
+
+  /* File staging area */
+  .file-staging {
+    display: none;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .file-staging.has-files { display: flex; }
+  .staged-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--surface3);
+    border-radius: 100px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .staged-file .remove-file {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  .staged-file .remove-file:hover { color: var(--red); }
+  .upload-staged-btn {
+    margin-left: auto;
+    padding: 4px 14px;
+    border-radius: 100px;
+    border: none;
+    background: var(--green);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .upload-staged-btn:hover { opacity: 0.85; }
+  .upload-staged-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Input bar */
+  .chat-inputbar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .chat-inputbar input[type="text"] {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: var(--radius-lg);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .chat-inputbar input[type="text"]:focus { border-color: var(--accent); }
+  .chat-inputbar input[type="text"]::placeholder { color: var(--text3); }
+  .attach-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .attach-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--text3); }
+  .attach-btn.has-files { color: var(--green); border-color: var(--green); }
+  .send-btn {
+    padding: 10px 20px;
+    border-radius: var(--radius-lg);
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .send-btn:hover { opacity: 0.85; }
+
+  /* ── Right Panel (Diary + Events + Documents) ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .right-tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .right-tab {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .right-tab:hover { color: var(--text); }
+  .right-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .right-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Diary sections */
+  .diary-section {
+    margin-bottom: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .diary-hdr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    transition: background 0.1s;
+    user-select: none;
+  }
+  .diary-hdr:hover { background: var(--surface2); }
+  .diary-hdr .chevron {
+    font-size: 10px;
+    transition: transform 0.2s;
+    color: var(--text3);
+  }
+  .diary-hdr .chevron.open { transform: rotate(90deg); }
+  .diary-body {
+    display: none;
+    padding: 8px 12px;
+    background: var(--bg);
+  }
+  .diary-body.open { display: block; }
+  .diary-pre {
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text2);
+  }
+  .diary-pre .k { color: var(--cyan); }
+  .diary-pre .s { color: var(--green); }
+  .diary-pre .n { color: var(--orange); }
+  .diary-pre .b { color: var(--purple); }
+  .diary-pre .nil { color: var(--text3); }
+
+  /* Event log */
+  .evt-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    font-size: 12px;
+    margin-bottom: 2px;
+  }
+  .evt-row .t { color: var(--text3); min-width: 65px; flex-shrink: 0; }
+  .evt-row .tp { font-weight: 600; min-width: 140px; flex-shrink: 0; }
+  .evt-row .d { color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .evt-row.ROUTED { background: var(--green-dim); border-left: 2px solid var(--green); }
+  .evt-row.PERMISSION_DENIED { background: var(--red-dim); border-left: 2px solid var(--red); }
+  .evt-row.CIRCUIT_BREAKER { background: var(--red-dim); border-left: 2px solid var(--red); }
+  .evt-row.NO_TARGET { background: var(--yellow-dim); border-left: 2px solid var(--yellow); }
+  .evt-row.AGENT_ERROR { background: var(--red-dim); border-left: 2px solid var(--red); }
+
+  /* Documents tab */
+  .doc-list { list-style: none; }
+  .doc-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+    background: var(--surface);
+  }
+  .doc-icon { font-size: 20px; flex-shrink: 0; }
+  .doc-info { flex: 1; min-width: 0; }
+  .doc-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .doc-path {
+    font-size: 11px;
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    color: var(--text3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .doc-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text3);
+    font-size: 13px;
+  }
+
+  /* Controls modal */
+  .controls-drawer {
+    position: fixed;
+    top: 0; right: -400px;
+    width: 380px;
+    height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 100;
+    transition: right 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+  }
+  .controls-drawer.open { right: 0; }
+  .drawer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 99;
+  }
+  .drawer-overlay.open { display: block; }
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .drawer-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .drawer-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 20px;
+    cursor: pointer;
+  }
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .drawer-group {
+    margin-bottom: 20px;
+  }
+  .drawer-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text3);
+    margin-bottom: 8px;
+  }
+  .drawer-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .drawer-btn {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .drawer-btn:hover { background: var(--surface2); color: var(--text); }
+  .drawer-btn.red { border-color: rgba(239,68,68,0.3); color: var(--red); }
+  .drawer-btn.red:hover { background: var(--red-dim); }
+  .drawer-btn.green { border-color: rgba(34,197,94,0.3); color: var(--green); }
+  .drawer-btn.green:hover { background: var(--green-dim); }
+  .drawer-btn.yellow { border-color: rgba(234,179,8,0.3); color: var(--yellow); }
+  .drawer-btn.yellow:hover { background: var(--yellow-dim); }
+  .drawer-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 6px;
+  }
+  .drawer-input:focus { border-color: var(--accent); }
+  .drawer-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-brand">MedForce Gateway</div>
+  <div class="topbar-sep"></div>
+
+  <div class="phase-track" id="phaseTrack">
+    <span class="phase-step" data-phase="intake">Intake</span>
+    <span class="phase-connector"></span>
+    <span class="phase-step" data-phase="clinical">Clinical</span>
+    <span class="phase-connector"></span>
+    <span class="phase-step" data-phase="booking">Booking</span>
+    <span class="phase-connector"></span>
+    <span class="phase-step" data-phase="monitoring">Monitoring</span>
+  </div>
+
+  <div class="topbar-right">
+    <input class="pid-input" type="text" id="pidInput" value="PT-TEST-001"
+           placeholder="Patient ID..." spellcheck="false"
+           onkeydown="if(event.key==='Enter')loadPatient()" />
+    <button class="topbar-btn-sm go" onclick="loadPatient()" title="Load this patient">Load</button>
+    <button class="topbar-btn-sm reset" onclick="resetPatient()" title="Reset this patient">Reset</button>
+    <span class="risk-badge none" id="riskBadge">No Risk</span>
+    <span class="status-indicator" id="statusDot" title="Gateway status"></span>
+    <button class="toolbar-btn" onclick="openDrawer()" title="Controls">&#9881;</button>
+  </div>
+</div>
+
+<!-- Main Layout -->
+<div class="main">
+
+  <!-- Left: Chat -->
+  <div class="chat-panel">
+    <div class="chat-toolbar">
+      <span class="chat-toolbar-title">Conversation</span>
+      <button class="role-btn active" data-role="patient">Patient</button>
+      <button class="role-btn" data-role="helper">Helper</button>
+      <button class="role-btn" data-role="gp">GP</button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="quick-replies" id="quickReplies"></div>
+    <div class="file-staging" id="fileStaging"></div>
+    <div class="chat-inputbar">
+      <button class="attach-btn" id="attachBtn" onclick="document.getElementById('fileInput').click()" title="Attach files (lab reports, imaging, etc.)">&#128206;</button>
+      <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.json" style="display:none" onchange="onFilesSelected(this)" />
+      <input type="text" id="chatInput" placeholder="Type a patient message..." autocomplete="off"
+             onkeydown="if(event.key==='Enter')sendMessage()" />
+      <button class="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <!-- Right: Diary / Events / Documents -->
+  <div class="right-panel">
+    <div class="right-tabs">
+      <button class="right-tab active" data-tab="diary" onclick="switchTab('diary',this)">Diary</button>
+      <button class="right-tab" data-tab="events" onclick="switchTab('events',this)">Events</button>
+      <button class="right-tab" data-tab="documents" onclick="switchTab('documents',this)">Documents</button>
+    </div>
+    <div class="right-body">
+      <div class="tab-content active" id="tabDiary">
+        <div class="diary-pre" style="color:var(--text3)">Send a message to begin.</div>
+      </div>
+      <div class="tab-content" id="tabEvents">
+        <div id="eventLog"></div>
+      </div>
+      <div class="tab-content" id="tabDocuments">
+        <div id="docList" class="doc-empty">No documents uploaded yet.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Controls Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="controls-drawer" id="drawer">
+  <div class="drawer-header">
+    <h3>Controls</h3>
+    <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-group">
+      <div class="drawer-group-title">Patient</div>
+      <div class="drawer-label">Patient ID</div>
+      <input class="drawer-input" type="text" id="patientId" value="PT-TEST-001" onchange="onPidChange()" />
+      <div class="drawer-row">
+        <button class="drawer-btn red" onclick="resetPatient()">Reset Patient</button>
+        <button class="drawer-btn" onclick="refreshAll()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="drawer-group">
+      <div class="drawer-group-title">Scenarios</div>
+      <select class="drawer-input" id="scenarioSelect" style="cursor:pointer">
+        <option value="">Select a scenario...</option>
+        <option value="happy_path_low_risk">Happy Path (Low Risk)</option>
+        <option value="urgent_high_risk">Urgent (High Risk)</option>
+        <option value="gp_query_required">GP Query Required</option>
+        <option value="backward_loop">Backward Loop</option>
+        <option value="deterioration_escalation">Deterioration</option>
+        <option value="multi_helper">Multi-Helper</option>
+      </select>
+      <div class="drawer-row">
+        <button class="drawer-btn green" onclick="loadScenario()">Load Scenario</button>
+      </div>
+    </div>
+
+    <div class="drawer-group">
+      <div class="drawer-group-title">Phase Advance</div>
+      <div class="drawer-row">
+        <button class="drawer-btn green" onclick="injectEvent('INTAKE_COMPLETE',{forced:false,fields_collected:['name','dob','phone']})">Intake Complete</button>
+        <button class="drawer-btn green" onclick="injectClinicalComplete()">Clinical Complete</button>
+        <button class="drawer-btn green" onclick="advancePhase()">Advance Phase</button>
+      </div>
+    </div>
+
+    <div class="drawer-group">
+      <div class="drawer-group-title">Inject Events</div>
+      <div class="drawer-row">
+        <button class="drawer-btn yellow" onclick="injectHeartbeat()">Heartbeat</button>
+        <button class="drawer-btn" onclick="injectLabUpload()">Lab Upload</button>
+        <button class="drawer-btn" onclick="injectGPResponse()">GP Response</button>
+        <button class="drawer-btn red" onclick="injectDeterioration()">Deterioration</button>
+      </div>
+    </div>
+
+    <div class="drawer-group">
+      <div class="drawer-group-title">Helper Settings</div>
+      <div class="drawer-label">Helper ID</div>
+      <input class="drawer-input" type="text" id="helperId" value="helper-sarah" />
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/gateway';
+let currentRole = 'patient';
+let currentPhase = '';
+let responseIndex = 0;
+let pollTimer = null;
+let stagedFiles = []; // files selected for upload
+
+// ── Role Tabs ──
+document.querySelectorAll('.role-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentRole = btn.dataset.role;
+    updatePlaceholder();
+    updateQuickReplies();
+  });
+});
+
+function updatePlaceholder() {
+  const el = document.getElementById('chatInput');
+  const map = { patient: 'patient message', helper: 'helper message', gp: 'GP response' };
+  el.placeholder = `Type a ${map[currentRole] || 'message'}...`;
+}
+
+// ── Right Panel Tabs ──
+function switchTab(tab, el) {
+  document.querySelectorAll('.right-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const tabMap = { diary: 'tabDiary', events: 'tabEvents', documents: 'tabDocuments' };
+  document.getElementById(tabMap[tab]).classList.add('active');
+  if (tab === 'documents') refreshDocuments();
+}
+
+// ── Drawer ──
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+}
+
+function onPidChange() {
+  // Sync drawer input → top bar input
+  document.getElementById('pidInput').value = document.getElementById('patientId').value;
+  responseIndex = 0;
+  refreshAll();
+}
+
+function loadPatient() {
+  // Sync top bar input → drawer input
+  const pid = document.getElementById('pidInput').value.trim();
+  if (!pid) return;
+  document.getElementById('patientId').value = pid;
+  document.getElementById('chatMessages').innerHTML = '';
+  document.getElementById('eventLog').innerHTML = '';
+  responseIndex = 0;
+  currentPhase = '';
+  updatePhaseTrack('');
+  addChat(`Loaded patient: ${pid}`, 'system');
+  refreshAll();
+}
+
+// ── File Upload ──
+function onFilesSelected(input) {
+  for (const file of input.files) {
+    stagedFiles.push(file);
+  }
+  input.value = ''; // reset so same file can be re-selected
+  renderStagedFiles();
+}
+
+function removeStagedFile(index) {
+  stagedFiles.splice(index, 1);
+  renderStagedFiles();
+}
+
+function renderStagedFiles() {
+  const el = document.getElementById('fileStaging');
+  const attachBtn = document.getElementById('attachBtn');
+
+  if (stagedFiles.length === 0) {
+    el.classList.remove('has-files');
+    el.innerHTML = '';
+    attachBtn.classList.remove('has-files');
+    return;
+  }
+
+  attachBtn.classList.add('has-files');
+  el.classList.add('has-files');
+
+  let html = '';
+  stagedFiles.forEach((file, i) => {
+    const size = file.size < 1024 ? `${file.size} B`
+      : file.size < 1048576 ? `${(file.size/1024).toFixed(1)} KB`
+      : `${(file.size/1048576).toFixed(1)} MB`;
+    const icon = file.name.match(/\.(pdf)$/i) ? '&#128196;'
+      : file.name.match(/\.(png|jpg|jpeg)$/i) ? '&#128247;'
+      : '&#128195;';
+    html += `<span class="staged-file">${icon} ${file.name} (${size}) <button class="remove-file" onclick="removeStagedFile(${i})">&times;</button></span>`;
+  });
+  html += `<button class="upload-staged-btn" id="uploadStagedBtn" onclick="uploadStagedFiles()">Upload ${stagedFiles.length} file${stagedFiles.length > 1 ? 's' : ''}</button>`;
+  el.innerHTML = html;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadStagedFiles() {
+  if (stagedFiles.length === 0) return;
+
+  const pid = document.getElementById('patientId').value;
+  const btn = document.getElementById('uploadStagedBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+
+  const attachments = [];
+  for (const file of stagedFiles) {
+    try {
+      const base64 = await fileToBase64(file);
+      attachments.push({ filename: file.name, content_base64: base64 });
+    } catch (e) {
+      addChat(`Failed to read ${file.name}: ${e.message}`, 'system');
+    }
+  }
+
+  if (attachments.length === 0) return;
+
+  // Show upload in chat
+  const fileNames = attachments.map(a => a.filename).join(', ');
+  addChatWithFiles(`Uploaded: ${fileNames}`, 'sent', currentRole, attachments);
+
+  try {
+    const resp = await fetch(`${API}/upload/${pid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        attachments,
+        channel: 'test_harness',
+        sender_role: currentRole === 'gp' ? 'gp' : 'patient',
+      }),
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      const summary = data.uploaded.map(u => `${u.filename} (${formatBytes(u.size_bytes)})`).join(', ');
+      addChat(`Uploaded to GCS: ${summary}`, 'system');
+    } else {
+      addChat(`Upload errors: ${JSON.stringify(data.errors)}`, 'system');
+    }
+  } catch (e) {
+    addChat(`Upload failed: ${e.message}`, 'system');
+  }
+
+  // Clear staging
+  stagedFiles = [];
+  renderStagedFiles();
+  setTimeout(refreshAll, 500);
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`;
+  return `${(bytes/1048576).toFixed(1)} MB`;
+}
+
+// ── Send Message ──
+let _sendingLock = false;
+async function sendMessage(overrideText) {
+  if (_sendingLock) return;
+  const input = document.getElementById('chatInput');
+  const text = overrideText || input.value.trim();
+  if (!text) return;
+  _sendingLock = true;
+  if (!overrideText) input.value = '';
+
+  const pid = document.getElementById('patientId').value;
+  addChat(text, 'sent', currentRole);
+
+  let senderId = pid;
+  let senderRole = currentRole;
+
+  if (currentRole === 'helper') {
+    senderId = document.getElementById('helperId').value || 'helper:user';
+  } else if (currentRole === 'gp') {
+    senderId = 'gp:test-harness';
+    try {
+      await fetch(`${API}/emit`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          event_type: 'GP_RESPONSE', patient_id: pid,
+          sender_role: 'gp', sender_id: senderId,
+          payload: { text, channel: 'test_harness', lab_results: {} },
+        }),
+      });
+      addChat('GP_RESPONSE emitted', 'system');
+    } catch (e) { addChat(`Error: ${e.message}`, 'system'); }
+    _sendingLock = false;
+    setTimeout(refreshAll, 500);
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API}/emit`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        event_type: 'USER_MESSAGE', patient_id: pid,
+        sender_role: senderRole, sender_id: senderId,
+        payload: { text, channel: 'test_harness' },
+      }),
+    });
+    const data = await resp.json();
+    if (!data.success) addChat(`Error: ${data.message}`, 'system');
+  } catch (e) {
+    addChat(`Network error: ${e.message}`, 'system');
+  }
+  _sendingLock = false;
+  setTimeout(refreshAll, 500);
+}
+
+function addChat(text, type, role) {
+  const row = document.createElement('div');
+  row.className = `msg-row ${type}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  row.appendChild(bubble);
+
+  if (role && type !== 'system') {
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    const icons = { patient: 'Patient', helper: 'Helper', gp: 'GP', agent: 'Agent' };
+    meta.textContent = `${icons[role] || role} \u00B7 ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+    row.appendChild(meta);
+  }
+
+  const c = document.getElementById('chatMessages');
+  c.appendChild(row);
+  c.scrollTop = c.scrollHeight;
+}
+
+function addChatWithFiles(text, type, role, attachments) {
+  const row = document.createElement('div');
+  row.className = `msg-row ${type}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+
+  // File icons
+  for (const att of attachments) {
+    const fileEl = document.createElement('div');
+    fileEl.className = 'file-attachment';
+    const icon = att.filename.match(/\.pdf$/i) ? '&#128196;'
+      : att.filename.match(/\.(png|jpg|jpeg)$/i) ? '&#128247;'
+      : '&#128195;';
+    fileEl.innerHTML = `<span class="file-icon">${icon}</span><span class="file-name">${att.filename}</span>`;
+    bubble.appendChild(fileEl);
+  }
+
+  row.appendChild(bubble);
+
+  if (role && type !== 'system') {
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    const icons = { patient: 'Patient', helper: 'Helper', gp: 'GP', agent: 'Agent' };
+    meta.textContent = `${icons[role] || role} \u00B7 ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+    row.appendChild(meta);
+  }
+
+  const c = document.getElementById('chatMessages');
+  c.appendChild(row);
+  c.scrollTop = c.scrollHeight;
+}
+
+// ── Quick Replies ──
+function updateQuickReplies() {
+  const el = document.getElementById('quickReplies');
+  el.innerHTML = '';
+  const btns = [];
+
+  if (currentRole === 'patient') {
+    if (!currentPhase || currentPhase === 'intake') {
+      btns.push(['I am the patient', 'I am the patient, my name is Alice Green']);
+      btns.push(['Text me', 'I prefer to be contacted by text message']);
+      btns.push(['15/06/1985', '15/06/1985']);
+      btns.push(['1234567890', '1234567890']);
+      btns.push(['07700900001', '07700900001']);
+      btns.push(['Dr. Williams', 'Dr. Williams']);
+    } else if (currentPhase === 'clinical') {
+      btns.push(['Liver pain', 'I have abdominal pain on the right side, fatigue, and yellow skin. Referred for suspected cirrhosis.']);
+      btns.push(['Medications', 'I take metformin 500mg twice daily and lisinopril 10mg']);
+      btns.push(['No allergies', 'No known allergies. I drink about 3 pints most evenings.']);
+      btns.push(['Pain 6/10', 'My pain is about 6 out of 10, upper right abdomen']);
+      btns.push(['Skip docs', "I don't have any documents to share right now"]);
+    } else if (currentPhase === 'booking') {
+      btns.push(['Slot 1', '1']);
+      btns.push(['Slot 2', '2']);
+      btns.push(['Slot 3', '3']);
+    } else if (currentPhase === 'monitoring') {
+      btns.push(['Feeling fine', "I'm feeling fine, thanks for checking in."]);
+      btns.push(['Getting worse', "I've been feeling worse lately, more fatigue and pain"]);
+      btns.push(['Jaundice + confused', 'I have noticed jaundice and confusion over the past few days']);
+      btns.push(['More detail', "The pain has been getting worse over the past 3 days, about 7/10 now. I'm also more tired than usual and struggling to eat."]);
+      btns.push(['Can manage', "It's uncomfortable but I can still get around and do most things. Maybe 5/10 severity."]);
+      btns.push(['Struggling', "I'm really struggling. The pain is 8/10 and I can barely get out of bed. I've also noticed some swelling."]);
+    }
+  } else if (currentRole === 'gp') {
+    btns.push(['Normal labs', 'Labs are within normal range']);
+    btns.push(['Elevated bilirubin', 'Bilirubin 6.0, ALT 200 — needs attention']);
+  }
+
+  // Add upload button during clinical phase
+  if (currentPhase === 'clinical') {
+    const uploadBtn = document.createElement('button');
+    uploadBtn.className = 'quick-reply';
+    uploadBtn.innerHTML = '&#128206; Upload docs';
+    uploadBtn.onclick = () => document.getElementById('fileInput').click();
+    el.appendChild(uploadBtn);
+  }
+
+  // Add heartbeat simulation buttons during monitoring phase
+  if (currentPhase === 'monitoring') {
+    const separator = document.createElement('span');
+    separator.style.cssText = 'width:1px;height:20px;background:var(--border);margin:0 4px;flex-shrink:0';
+    el.appendChild(separator);
+
+    const hbDays = [
+      ['Day 7', 7],
+      ['Day 14', 14],
+      ['Day 30', 30],
+      ['Day 60', 60],
+    ];
+    hbDays.forEach(([label, days]) => {
+      const btn = document.createElement('button');
+      btn.className = 'quick-reply';
+      btn.style.cssText = 'border-color:rgba(234,179,8,0.3);color:var(--yellow)';
+      btn.textContent = `\u23F0 ${label}`;
+      btn.title = `Simulate heartbeat at ${days} days (agent will proactively message)`;
+      btn.onclick = () => {
+        console.debug(`[debug] Simulating heartbeat: day ${days}`);
+        injectEvent('HEARTBEAT', { days_since_appointment: days, milestone: `heartbeat_${days}d`, channel: 'test_harness' });
+      };
+      el.appendChild(btn);
+    });
+  }
+
+  btns.forEach(([label, value]) => {
+    const btn = document.createElement('button');
+    btn.className = 'quick-reply';
+    btn.textContent = label;
+    btn.onclick = () => sendMessage(value);
+    el.appendChild(btn);
+  });
+}
+
+// ── Documents Tab ──
+async function refreshDocuments() {
+  const pid = document.getElementById('patientId').value;
+  const el = document.getElementById('docList');
+
+  try {
+    const resp = await fetch(`${API}/documents/${pid}`);
+    const data = await resp.json();
+
+    if (!data.documents || data.documents.length === 0) {
+      el.className = 'doc-empty';
+      el.innerHTML = 'No documents uploaded yet.<br><br>Use the &#128206; button to upload lab reports, imaging, or referral letters.';
+      return;
+    }
+
+    el.className = 'doc-list';
+    let html = '';
+    for (const doc of data.documents) {
+      const icon = doc.match(/\.pdf$/i) ? '&#128196;'
+        : doc.match(/\.(png|jpg|jpeg)$/i) ? '&#128247;'
+        : '&#128195;';
+      html += `<div class="doc-item">
+        <span class="doc-icon">${icon}</span>
+        <div class="doc-info">
+          <div class="doc-name">${doc}</div>
+          <div class="doc-path">${data.gcs_prefix}${doc}</div>
+        </div>
+      </div>`;
+    }
+    el.innerHTML = html;
+  } catch (e) {
+    el.className = 'doc-empty';
+    el.innerHTML = 'Failed to load documents.';
+  }
+}
+
+// ── Scenarios & Actions ──
+async function loadScenario() {
+  const scenario = document.getElementById('scenarioSelect').value;
+  const pid = document.getElementById('patientId').value;
+  if (!scenario) return;
+  try {
+    const resp = await fetch(`${API}/scenario/load`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ scenario, patient_id: pid }),
+    });
+    const data = await resp.json();
+    if (data.success) addChat(`Scenario loaded: ${data.description}`, 'system');
+    else addChat(`Failed: ${JSON.stringify(data)}`, 'system');
+    responseIndex = 0;
+    closeDrawer();
+    refreshAll();
+  } catch (e) { addChat(`Failed: ${e.message}`, 'system'); }
+}
+
+async function resetPatient() {
+  // Use the top bar input as primary, sync to drawer
+  const pid = document.getElementById('pidInput').value.trim() || document.getElementById('patientId').value;
+  document.getElementById('patientId').value = pid;
+  document.getElementById('pidInput').value = pid;
+  try {
+    await fetch(`${API}/reset/${pid}`, { method: 'DELETE' });
+    document.getElementById('chatMessages').innerHTML = '';
+    document.getElementById('tabDiary').innerHTML = '<div class="diary-pre" style="color:var(--text3)">Send a message to begin.</div>';
+    document.getElementById('eventLog').innerHTML = '';
+    document.getElementById('docList').className = 'doc-empty';
+    document.getElementById('docList').innerHTML = 'No documents uploaded yet.';
+    responseIndex = 0;
+    currentPhase = '';
+    updatePhaseTrack('');
+    addChat('Patient reset — ready to start', 'system');
+    closeDrawer();
+    refreshAll();
+  } catch (e) { addChat(`Reset failed: ${e.message}`, 'system'); }
+}
+
+async function injectEvent(eventType, payload = {}) {
+  const pid = document.getElementById('patientId').value;
+  try {
+    const resp = await fetch(`${API}/emit`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        event_type: eventType, patient_id: pid,
+        sender_role: 'system', sender_id: 'test_harness',
+        payload: { channel: 'test_harness', ...payload },
+      }),
+    });
+    const data = await resp.json();
+    addChat(`${data.success ? 'OK' : 'FAIL'}: ${eventType}`, 'system');
+    setTimeout(refreshAll, 500);
+  } catch (e) { addChat(`Inject failed: ${e.message}`, 'system'); }
+}
+
+function advancePhase() {
+  const map = { intake: 'INTAKE_COMPLETE', clinical: 'CLINICAL_COMPLETE', booking: 'BOOKING_COMPLETE' };
+  const evt = map[currentPhase];
+  if (!evt) { addChat(`Cannot advance from "${currentPhase}"`, 'system'); return; }
+  const payload = { channel: 'test_harness' };
+  if (evt === 'CLINICAL_COMPLETE') { payload.risk_level = 'medium'; payload.risk_method = 'test_harness'; }
+  if (evt === 'BOOKING_COMPLETE') { payload.appointment_date = new Date(Date.now()+14*86400000).toISOString().split('T')[0]; }
+  injectEvent(evt, payload);
+}
+
+function injectHeartbeat() {
+  const days = prompt('Days since appointment:', '14');
+  if (days === null) return;
+  injectEvent('HEARTBEAT', { days_since_appointment: parseInt(days), milestone: `heartbeat_${days}d` });
+}
+
+function injectLabUpload() {
+  const labs = prompt('Lab values JSON:', '{"bilirubin": 5.0, "ALT": 400}');
+  if (!labs) return;
+  try {
+    injectEvent('DOCUMENT_UPLOADED', { type: 'lab_results', extracted_values: JSON.parse(labs), file_ref: 'upload' });
+  } catch (e) { alert('Invalid JSON'); }
+}
+
+function injectGPResponse() {
+  const text = prompt('GP response:', 'Labs are within normal range');
+  if (!text) return;
+  injectEvent('GP_RESPONSE', { text, channel: 'test_harness' });
+}
+
+function injectDeterioration() {
+  const vals = prompt('Values JSON:', '{"bilirubin": 8.0, "ALT": 700}');
+  if (!vals) return;
+  try {
+    injectEvent('DETERIORATION_ALERT', { new_values: JSON.parse(vals), reason: 'Manual injection' });
+  } catch (e) { alert('Invalid JSON'); }
+}
+
+function injectClinicalComplete() {
+  const risk = prompt('Risk level:', 'medium');
+  if (!risk) return;
+  injectEvent('CLINICAL_COMPLETE', { risk_level: risk, risk_method: 'test_harness' });
+}
+
+// ── Refresh ──
+async function refreshAll() {
+  const pid = document.getElementById('patientId').value;
+  await Promise.all([refreshDiary(pid), refreshEvents(pid), refreshResponses(pid), refreshStatus()]);
+}
+
+async function refreshDiary(pid) {
+  try {
+    const resp = await fetch(`${API}/diary/${pid}`);
+    if (resp.status === 404) {
+      document.getElementById('tabDiary').innerHTML = '<div class="diary-pre" style="color:var(--text3)">No diary found. Send a message to begin.</div>';
+      updatePhaseTrack('');
+      updateRiskBadge('none');
+      return;
+    }
+    const data = await resp.json();
+    const diary = data.diary;
+
+    const phase = diary.header.current_phase;
+    if (phase !== currentPhase) { currentPhase = phase; updateQuickReplies(); }
+    updatePhaseTrack(phase);
+    updateRiskBadge(diary.header.risk_level || 'none');
+
+    const sections = [
+      ['header', 'Header', false],
+      ['intake', 'Intake', false],
+      ['clinical', 'Clinical', true],
+      ['booking', 'Booking', false],
+      ['monitoring', 'Monitoring', false],
+      ['gp_channel', 'GP Channel', false],
+    ];
+
+    let html = '';
+    for (const [key, label, open] of sections) {
+      const val = diary[key];
+      if (val === undefined) continue;
+      const json = JSON.stringify(val, null, 2);
+      const hl = highlight(json);
+      html += `<div class="diary-section">
+        <div class="diary-hdr" onclick="toggleDiary(this)">
+          <span class="chevron ${open?'open':''}">&#9654;</span>${label}
+        </div>
+        <div class="diary-body ${open?'open':''}"><pre class="diary-pre">${hl}</pre></div>
+      </div>`;
+    }
+    document.getElementById('tabDiary').innerHTML = html;
+  } catch (e) {}
+}
+
+function toggleDiary(hdr) {
+  hdr.querySelector('.chevron').classList.toggle('open');
+  hdr.nextElementSibling.classList.toggle('open');
+}
+
+function highlight(json) {
+  return json
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/: (\d+\.?\d*)/g, ': <span class="n">$1</span>')
+    .replace(/: (true|false)/g, ': <span class="b">$1</span>')
+    .replace(/: null/g, ': <span class="nil">null</span>');
+}
+
+async function refreshEvents(pid) {
+  try {
+    const resp = await fetch(`${API}/events/${pid}?limit=100`);
+    const data = await resp.json();
+    const el = document.getElementById('eventLog');
+    el.innerHTML = '';
+    for (const evt of data.events) {
+      const div = document.createElement('div');
+      div.className = `evt-row ${evt.status}`;
+      const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+      div.innerHTML = `<span class="t">${time}</span><span class="tp">${evt.event_type}</span><span class="d">${evt.status} \u2192 ${evt.detail || ''}</span>`;
+      el.appendChild(div);
+    }
+    el.scrollTop = el.scrollHeight;
+  } catch (e) {}
+}
+
+async function refreshResponses(pid) {
+  try {
+    const resp = await fetch(`${API}/responses/${pid}`);
+    const data = await resp.json();
+    for (let i = responseIndex; i < data.responses.length; i++) {
+      addChat(data.responses[i].message, 'received', 'agent');
+    }
+    responseIndex = data.responses.length;
+  } catch (e) {}
+}
+
+async function refreshStatus() {
+  try {
+    const resp = await fetch(`${API}/status`);
+    const data = await resp.json();
+    const dot = document.getElementById('statusDot');
+    dot.className = data.status === 'ok' ? 'status-indicator ok' : 'status-indicator err';
+    dot.title = data.status === 'ok' ? 'Gateway connected' : 'Gateway disconnected';
+  } catch (e) {
+    document.getElementById('statusDot').className = 'status-indicator err';
+  }
+}
+
+function updatePhaseTrack(phase) {
+  const phases = ['intake', 'clinical', 'booking', 'monitoring'];
+  const idx = phases.indexOf(phase);
+  document.querySelectorAll('.phase-step').forEach((el, i) => {
+    el.classList.remove('active', 'done');
+    if (i === idx) el.classList.add('active');
+    else if (i < idx && idx >= 0) el.classList.add('done');
+  });
+  document.querySelectorAll('.phase-connector').forEach((el, i) => {
+    el.classList.remove('done');
+    if (i < idx && idx >= 0) el.classList.add('done');
+  });
+}
+
+function updateRiskBadge(risk) {
+  const el = document.getElementById('riskBadge');
+  el.className = `risk-badge ${risk}`;
+  const labels = { none: 'No Risk', low: 'Low Risk', medium: 'Medium', high: 'High Risk', critical: 'Critical' };
+  el.textContent = labels[risk] || risk;
+}
+
+// ── Polling ──
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => refreshAll(), 3000);
+}
+
+// ── Init ──
+refreshAll();
+startPolling();
+updateQuickReplies();
+</script>
+</body>
+</html>

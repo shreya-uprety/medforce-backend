@@ -1,0 +1,1044 @@
+{
+  "scenario_1_happy_path": [
+    {
+      "role": "patient",
+      "message": "Hi, I'm the patient. My name is Sarah Jones"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Ms. Jones, and could I just confirm your date of birth for our records please?"
+    },
+    {
+      "role": "patient",
+      "message": "22/06/1978"
+    },
+    {
+      "role": "agent",
+      "message": "\"Good morning, Sarah, and just to confirm your details on our system, could I please have your NHS number?\""
+    },
+    {
+      "role": "patient",
+      "message": "943 476 5870"
+    },
+    {
+      "role": "agent",
+      "message": "And finally, Ms. Jones, could I please just confirm your phone number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "07700 900456"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Sarah, just to complete your registration, could you please provide me with the name of your GP?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Patel"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Sarah Jones! I've collected all the information we need. We've noted your preference to be contacted via email. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "patient",
+      "message": "I have abdominal pain on the right side, level 5 out of 10"
+    },
+    {
+      "role": "agent",
+      "message": "I understand you're experiencing abdominal pain. To ensure your safety, have you noticed any blood in your stool or vomit, yellowing of your skin or eyes (jaundice), or are you experiencing any dizziness or confusion?"
+    },
+    {
+      "role": "patient",
+      "message": "I take amlodipine 5mg daily. No known allergies. I don't smoke or drink."
+    },
+    {
+      "role": "agent",
+      "message": "When did your abdominal pain start, and would you say it's been getting better, worse, or staying about the same since then?"
+    },
+    {
+      "role": "patient",
+      "message": "The pain started about 2 weeks ago and is getting gradually worse."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "no documents"
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as LOW priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-02-28\nTime: 14:30\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S01-2026-02-28\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": "feeling fine, no concerns"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-02-28 is coming up. Our next scheduled check-in is in about 14 days. If you have any concerns about your symptoms, please let us know and we'll escalate to our clinical team."
+    }
+  ],
+  "scenario_2_confused": [
+    {
+      "role": "patient",
+      "message": "Hello, I am the patient"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "John Smith"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "07700 900123"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Smith, just to confirm your details for our system, could you please provide your date of birth?"
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Smith, could I please confirm your date of birth for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "my email is john@example.com"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Smith, could you please provide me with your date of birth?"
+    },
+    {
+      "role": "patient",
+      "message": "15/03/1985"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Smith, just to confirm everything, could I please have your NHS number?"
+    },
+    {
+      "role": "patient",
+      "message": "123 456 7890"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Smith, could you please provide me with the name of your GP?"
+    },
+    {
+      "role": "patient",
+      "message": "My GP is Dr. Patel"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, John Smith! I've collected all the information we need. We've noted your preference to be contacted via phone. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "patient",
+      "message": "I have abdominal pain, level 6 out of 10"
+    },
+    {
+      "role": "agent",
+      "message": "To ensure your safety, have you experienced any concerning symptoms like vomiting blood, black or tarry stools, yellowing of your skin or eyes, sudden severe pain, chest pain, or difficulty breathing alongside your abdominal pain?"
+    },
+    {
+      "role": "patient",
+      "message": "Actually it's more like 8 out of 10, it's getting worse"
+    },
+    {
+      "role": "agent",
+      "message": "Can you describe the pain you're experiencing? Is it constant or does it come and go? Where exactly is the pain located in your abdomen?"
+    },
+    {
+      "role": "patient",
+      "message": "No known allergies"
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "Actually I'm allergic to penicillin, sorry I forgot"
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as MEDIUM priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "patient",
+      "message": "I take lisinopril 10mg daily. High blood pressure."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your MEDIUM risk assessment, we need to book your consultation within 14 days. Here are the available appointments:\n\n  1. 2026-02-28 at 15:00 with Dr. Available\n  2. 2026-03-02 at 09:00 with Dr. Available\n  3. 2026-03-02 at 10:00 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "patient",
+      "message": "no documents"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-02-28\nTime: 15:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S02-2026-02-28\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies, penicillin\n  - If you experience any worsening symptoms before your appointment, please contact NHS 111 or attend A&E\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    }
+  ],
+  "scenario_3_emergency": [
+    {
+      "role": "patient",
+      "message": "I am the patient, my name is David Brown"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Alright David, and just to confirm your details, could I please have your date of birth?"
+    },
+    {
+      "role": "patient",
+      "message": "15/06/1980"
+    },
+    {
+      "role": "agent",
+      "message": "Alright David, could I please confirm your NHS number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "123 456 7890"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Brown, just to confirm, could I please have your phone number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "07700900100"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Brown, could you please provide me with the name of your GP?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Smith"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, David Brown! I've collected all the information we need. We've noted your preference to be contacted via email. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "patient",
+      "message": "I have liver cirrhosis. Severe abdominal pain, level 7. History of ascites."
+    },
+    {
+      "role": "agent",
+      "message": "Given your cirrhosis and ascites history, and the severity of your abdominal pain (7/10), have you noticed any new or worsening jaundice (yellowing of the skin or eyes), confusion, vomiting blood, or black, tarry stools? These can be signs of serious complications."
+    },
+    {
+      "role": "patient",
+      "message": "I take propranolol 40mg and spironolactone 100mg daily."
+    },
+    {
+      "role": "agent",
+      "message": "When did this abdominal pain start, and has it been gradually worsening, or did it come on suddenly? Also, can you describe the pain – is it sharp, cramping, constant, or something else?"
+    },
+    {
+      "role": "patient",
+      "message": "No known allergies. I've cut down drinking to once a week."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "The pain has been getting worse. Sometimes I see blood in my stool."
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as HIGH priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your HIGH risk assessment, we need to book your consultation within 2 days. Here are the available appointments:\n\n  1. 2026-03-02 at 09:00 with Dr. Available\n  2. 2026-03-02 at 10:00 with Dr. Available\n  3. 2026-03-02 at 11:00 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-02\nTime: 09:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S03-2026-03-02\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Avoid alcohol completely for at least 48 hours before your appointment\n  - If you are on a low-sodium diet, please continue following it\n  - Fasting is required for 8-12 hours before your appointment (water is fine)\n  - A blood test may be required — please wear comfortable clothing with easy access to your arm\n  - Please remind the clinician of your allergies: No known allergies\n  - If you experience any worsening symptoms before your appointment, please contact NHS 111 or attend A&E\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": "I've noticed some swelling in my legs and ankles"
+    },
+    {
+      "role": "agent",
+      "message": "I'm sorry to hear you're not feeling well, David Brown. I need to ask you a few quick questions so our clinical team can properly assess the situation.\n\nBesides the swelling in your legs and ankles, which started when and has it worsened, are you experiencing any shortness of breath, abdominal pain or distension, or difficulty doing your usual daily activities? On a scale of 1 to 10, with 1 being hardly noticeable and 10 being the worst swelling you can imagine, how would you rate the swelling?"
+    },
+    {
+      "role": "patient",
+      "message": "It started about 3 days ago and it's getting worse each day"
+    },
+    {
+      "role": "agent",
+      "message": "Given that the swelling in your legs and ankles has been worsening over the past three days, could you please rate the severity of the swelling *right now* on a scale of 1 to 10, where 1 is hardly noticeable and 10 is the most severe swelling you can imagine?"
+    },
+    {
+      "role": "patient",
+      "message": "Yes, I also have some abdominal swelling and I feel more tired"
+    },
+    {
+      "role": "agent",
+      "message": "On a scale of 1 to 10, where 1 is barely noticeable and 10 is the most severe abdominal swelling you can imagine, how would you rate your abdominal swelling *right now*?"
+    },
+    {
+      "role": "patient",
+      "message": "I'd say about 6 out of 10. I can still walk but it's uncomfortable"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for answering those questions. Based on your responses, your symptoms need urgent clinical attention. Our clinical team has been notified and will review your case as a priority. We will contact you about bringing your appointment forward.\n\nIn the meantime: Please contact the clinic immediately to arrange for an urgent appointment. Monitor your symptoms closely, especially any changes in breathing or increased abdominal pain. Follow any existing dietary restrictions for cirrhosis."
+    },
+    {
+      "role": "patient",
+      "message": "I am the patient, my name is Test Negation"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Alright, Test Negation, and just to confirm your details for our system, could I please have your date of birth?"
+    },
+    {
+      "role": "patient",
+      "message": "15/06/1980"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Test, just to confirm your details, could I please have your NHS number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "123 456 7890"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Test, to complete your registration could I please get your phone number?"
+    },
+    {
+      "role": "patient",
+      "message": "07700900100"
+    },
+    {
+      "role": "agent",
+      "message": "\"Alright Test, just to complete your registration, could you please tell me the name of your GP?\""
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Smith"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Test Negation! I've collected all the information we need. We've noted your preference to be contacted via email. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "patient",
+      "message": "I have abdominal pain, level 5 out of 10. It's on the right side."
+    },
+    {
+      "role": "agent",
+      "message": "Besides the abdominal pain, have you experienced any other symptoms such as fever, nausea, vomiting (especially with blood), diarrhea, constipation, dizziness, lightheadedness, or any changes in your urine or bowel movements?"
+    },
+    {
+      "role": "patient",
+      "message": "I take amlodipine 5mg daily. No surgeries. No known allergies."
+    },
+    {
+      "role": "agent",
+      "message": "On a scale of 0 to 10, with 0 being no pain and 10 being the worst pain imaginable, your pain is currently a 5. Has the pain been consistently at this level, or has it been getting better or worse since it started? If it's changed, how quickly has it changed?"
+    },
+    {
+      "role": "patient",
+      "message": "The pain started 2 weeks ago and is gradually getting worse."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "I don't drink or smoke."
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as MEDIUM priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your MEDIUM risk assessment, we need to book your consultation within 14 days. Here are the available appointments:\n\n  1. 2026-03-02 at 11:30 with Dr. Available\n  2. 2026-03-02 at 14:00 with Dr. Available\n  3. 2026-03-02 at 14:30 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-02\nTime: 11:30\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S03N-2026-03-02\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": "I don't have jaundice or confusion, just checking in"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-03-02 is coming up. Our next scheduled check-in is in about 14 days. If you have any concerns about your symptoms, please let us know and we'll escalate to our clinical team."
+    },
+    {
+      "role": "patient",
+      "message": "I am the patient, my name is Emergency Test"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Okay, Emergency, could I please confirm your date of birth for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "15/06/1980"
+    },
+    {
+      "role": "agent",
+      "message": "\"Alright Emergency, just to confirm everything, could I please have your NHS number?\""
+    },
+    {
+      "role": "patient",
+      "message": "123 456 7890"
+    },
+    {
+      "role": "agent",
+      "message": "\"And just so we can get in touch with you, Mr. Test, could I please have your phone number for our records?\""
+    },
+    {
+      "role": "patient",
+      "message": "07700900100"
+    },
+    {
+      "role": "agent",
+      "message": "Okay, Emergency, just to update your records, could I please have the name of your GP?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Smith"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Emergency Test! I've collected all the information we need. We've noted your preference to be contacted via email. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "patient",
+      "message": "Liver pain, level 5 out of 10"
+    },
+    {
+      "role": "agent",
+      "message": "I understand you're experiencing liver pain. Has there been any yellowing of your skin or eyes (jaundice), confusion, vomiting blood, or sudden, severe worsening of the pain? These can be signs of a serious problem that needs immediate attention."
+    },
+    {
+      "role": "patient",
+      "message": "No meds. No allergies."
+    },
+    {
+      "role": "agent",
+      "message": "When did this liver pain start, and would you say it's been getting better, worse, or staying about the same since then?"
+    },
+    {
+      "role": "patient",
+      "message": "Moderate pain, started recently"
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "no documents"
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as LOW priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-02\nTime: 14:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S03E-2026-03-02\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: None\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": "I have jaundice and confusion"
+    },
+    {
+      "role": "agent",
+      "message": "This sounds like it could be a medical emergency. Please call 999 or go to your nearest A&E immediately. Do not wait — our clinical team has been alerted and will follow up, but your immediate safety is the priority."
+    },
+    {
+      "role": "patient",
+      "message": "ok"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. As a reminder, please call 999 or go to your nearest A&E as soon as possible. Our clinical team has been notified and will follow up."
+    }
+  ],
+  "scenario_4_rescheduler": [
+    {
+      "role": "patient",
+      "message": "I am the patient, my name is Rachel Green"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Rachel, and could I please confirm your date of birth for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "15/06/1980"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Rachel, just to confirm your details, could I please have your NHS number?"
+    },
+    {
+      "role": "patient",
+      "message": "123 456 7890"
+    },
+    {
+      "role": "agent",
+      "message": "Alright, Rachel, could I just grab your phone number for our records, please?"
+    },
+    {
+      "role": "patient",
+      "message": "07700900100"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Rachel, could you please provide me with the name of your GP?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Smith"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Rachel Green! I've collected all the information we need. We've noted your preference to be contacted via email. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "patient",
+      "message": "I have abdominal pain, level 5 out of 10. It's on the right side."
+    },
+    {
+      "role": "agent",
+      "message": "I understand you're experiencing abdominal pain. Has the pain been associated with any vomiting of blood or black, tarry stools?"
+    },
+    {
+      "role": "patient",
+      "message": "I take amlodipine 5mg daily. No surgeries. No known allergies."
+    },
+    {
+      "role": "agent",
+      "message": "To help me understand the situation better, when did your abdominal pain start, and would you say it's been getting progressively worse since then?"
+    },
+    {
+      "role": "patient",
+      "message": "The pain started 2 weeks ago and is gradually getting worse."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "I don't drink or smoke."
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as MEDIUM priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your MEDIUM risk assessment, we need to book your consultation within 14 days. Here are the available appointments:\n\n  1. 2026-03-02 at 14:30 with Dr. Available\n  2. 2026-03-02 at 15:00 with Dr. Available\n  3. 2026-03-02 at 16:00 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-02\nTime: 14:30\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S04-2026-03-02\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": "I need to reschedule my appointment please"
+    },
+    {
+      "role": "agent",
+      "message": "Your monitoring period has begun. We'll check in with you periodically before your appointment to make sure everything is on track. We have 4 scheduled check-ins planned. If you have any concerns or new symptoms at any time, don't hesitate to message us."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-02\nTime: 14:30\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S04-2026-03-02\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": "I can't make it, I need a different time"
+    },
+    {
+      "role": "agent",
+      "message": "Your monitoring period has begun. We'll check in with you periodically before your appointment to make sure everything is on track. We have 4 scheduled check-ins planned. If you have any concerns or new symptoms at any time, don't hesitate to message us."
+    },
+    {
+      "role": "patient",
+      "message": "2"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-02\nTime: 15:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S04-2026-03-02\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    }
+  ],
+  "scenario_5_slot_rejector": [
+    {
+      "role": "patient",
+      "message": "I am the patient, my name is Picky Pete"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "email me please"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Mr. Pete, just to confirm your record, could I please have your date of birth?"
+    },
+    {
+      "role": "patient",
+      "message": "15/06/1980"
+    },
+    {
+      "role": "agent",
+      "message": "Alright, Mr. Pete, could I please just confirm your NHS number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "123 456 7890"
+    },
+    {
+      "role": "agent",
+      "message": "Alright, Picky Pete, just to confirm, could I please have your phone number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "07700900100"
+    },
+    {
+      "role": "agent",
+      "message": "Alright, Picky, to ensure we can keep your GP informed, could you please provide their name?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Smith"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Picky Pete! I've collected all the information we need. We've noted your preference to be contacted via email. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "patient",
+      "message": "I have abdominal pain, level 5 out of 10. It's on the right side."
+    },
+    {
+      "role": "agent",
+      "message": "Besides the abdominal pain, have you experienced any other symptoms like fever, nausea, vomiting (especially with blood), diarrhea, dizziness, or changes in your bowel movements or urine color?"
+    },
+    {
+      "role": "patient",
+      "message": "I take amlodipine 5mg daily. No surgeries. No known allergies."
+    },
+    {
+      "role": "agent",
+      "message": "Can you describe the pain? Is it constant or does it come and go? Where exactly in your abdomen is the pain located, and does it radiate anywhere else?"
+    },
+    {
+      "role": "patient",
+      "message": "The pain started 2 weeks ago and is gradually getting worse."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "I don't drink or smoke."
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as MEDIUM priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "patient",
+      "message": "None of those work for me, I'm not available at those times"
+    },
+    {
+      "role": "agent",
+      "message": "No problem! Here are some alternative appointment times:\n\n  1. 2026-03-03 at 11:30 with Dr. Available\n  2. 2026-03-03 at 14:00 with Dr. Available\n  3. 2026-03-03 at 14:30 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3), or let me know if these still don't work."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-03\nTime: 11:30\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S05-2026-03-03\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Please remind the clinician of your allergies: No known allergies\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    }
+  ],
+  "scenario_6_complex_clinical": [
+    {
+      "role": "patient",
+      "message": "Hello, I'm filling in for my father. I'm his daughter."
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "His name is Harold Wilson. Call him please."
+    },
+    {
+      "role": "agent",
+      "message": "And to confirm Mr. Wilson's details, could I please have his date of birth?"
+    },
+    {
+      "role": "patient",
+      "message": "12/08/1958"
+    },
+    {
+      "role": "agent",
+      "message": "Okay, and could you please provide me with Mr. Wilson's NHS number?"
+    },
+    {
+      "role": "patient",
+      "message": "876 543 2100"
+    },
+    {
+      "role": "agent",
+      "message": "And just to confirm, what phone number can we reach Mr. Wilson on?"
+    },
+    {
+      "role": "patient",
+      "message": "07700800801"
+    },
+    {
+      "role": "agent",
+      "message": "Okay, great! And to help us update Mr. Wilson's records, could you please provide the name of his GP?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Liver"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Harold Wilson! I've collected all the information we need. We've noted your preference to be contacted via phone. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "patient",
+      "message": "He has liver cirrhosis with ascites and portal hypertension. Pain level 7 out of 10. Severe abdominal swelling."
+    },
+    {
+      "role": "agent",
+      "message": "I see you're dealing with cirrhosis. Can you tell me what's been bothering you the most today?"
+    },
+    {
+      "role": "patient",
+      "message": "He takes propranolol 40mg, spironolactone 100mg, lactulose 15ml three times daily, rifaximin 550mg twice daily, metformin 500mg, and warfarin 5mg."
+    },
+    {
+      "role": "agent",
+      "message": "You mentioned you're dealing with cirrhosis. Can you tell me what's been going on that made you reach out today?"
+    },
+    {
+      "role": "patient",
+      "message": "He's allergic to penicillin which causes anaphylaxis, and allergic to codeine which causes nausea."
+    },
+    {
+      "role": "agent",
+      "message": "You mentioned you're dealing with cirrhosis. Can you tell me what's bothering you most today?"
+    },
+    {
+      "role": "patient",
+      "message": "The pain has been worse for 2 weeks. His ankles are very swollen. He stopped drinking 3 years ago."
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "no documents"
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as HIGH priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-01\nTime: 14:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S06-2026-03-01\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Continue taking Metformin as prescribed\n  - Continue taking Warfarin — bring your latest INR results\n  - Avoid alcohol completely for at least 48 hours before your appointment\n  - If you are on a low-sodium diet, please continue following it\n  - Fasting is required for 8-12 hours before your appointment (water is fine)\n  - A blood test may be required — please wear comfortable clothing with easy access to your arm\n  - Please remind the clinician of your allergies: penicillin (anaphylaxis), codeine (nausea)\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    }
+  ],
+  "scenario_7_resilient": [
+    {
+      "role": "patient",
+      "message": "Hello, I am the patient"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": ""
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "   "
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "Skip Patient"
+    },
+    {
+      "role": "agent",
+      "message": "How would you prefer us to keep in touch with you? We can contact you via email, text message (SMS), phone call, or continue through this chat."
+    },
+    {
+      "role": "patient",
+      "message": "text me"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Skip, and could I please confirm your date of birth for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "01/01/1990"
+    },
+    {
+      "role": "agent",
+      "message": "\"Skip, just to confirm everything, could I please have your NHS number?\""
+    },
+    {
+      "role": "patient",
+      "message": "9876543210"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Skip, just to complete your details, could I please confirm your phone number for our records?"
+    },
+    {
+      "role": "patient",
+      "message": "07700111222"
+    },
+    {
+      "role": "agent",
+      "message": "Alright Skip, and to update our records, could I please confirm the name of your GP?"
+    },
+    {
+      "role": "patient",
+      "message": "Dr. Nobody"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you, Skip Patient! I've collected all the information we need. We've noted your preference to be contacted via sms. You'll now be connected with our clinical team for your pre-consultation assessment."
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for completing your registration. I'm now going to ask you some clinical questions to prepare for your consultation. Let's start — what is the main reason for your visit today?"
+    },
+    {
+      "role": "patient",
+      "message": "I have some discomfort, maybe pain, level 3 out of 10"
+    },
+    {
+      "role": "agent",
+      "message": "To ensure your safety, are you experiencing any of the following: chest pain, severe shortness of breath, sudden confusion, vomiting blood, or yellowing of your skin or eyes?"
+    },
+    {
+      "role": "patient",
+      "message": "No medications. No allergies. I don't drink."
+    },
+    {
+      "role": "agent",
+      "message": "Can you describe the discomfort or pain you're experiencing, and where exactly are you feeling it?"
+    },
+    {
+      "role": "patient",
+      "message": "It's mild and comes and goes"
+    },
+    {
+      "role": "agent",
+      "message": "Do you have any recent lab results, radiology reports, referral letters, or NHS app screenshots to share? These help us assess your case more accurately. You can upload them now, or type 'skip' if you don't have any."
+    },
+    {
+      "role": "patient",
+      "message": "no documents"
+    },
+    {
+      "role": "agent",
+      "message": "Your clinical assessment is now complete. Based on the information gathered, your case has been assessed as LOW priority. Our booking team will now arrange your consultation appointment."
+    },
+    {
+      "role": "agent",
+      "message": "Based on your LOW risk assessment, we need to book your consultation within 30 days. Here are the available appointments:\n\n  1. 2026-03-01 at 15:00 with Dr. Available\n  2. 2026-03-01 at 16:00 with Dr. Available\n  3. 2026-03-02 at 16:00 with Dr. Available\n\nPlease reply with the number of your preferred slot (1, 2, or 3)."
+    },
+    {
+      "role": "patient",
+      "message": "asdfghjkl"
+    },
+    {
+      "role": "agent",
+      "message": "I didn't quite catch your selection. Please reply with 1, 2, or 3 to choose one of the offered appointment slots, or let me know if none of these times work for you."
+    },
+    {
+      "role": "patient",
+      "message": "1"
+    },
+    {
+      "role": "agent",
+      "message": "Your appointment has been confirmed!\n\nDate: 2026-03-01\nTime: 15:00\nProvider: Dr. Available\nAppointment ID: APT-PT-1771936131-S07-2026-03-01\n\nPre-appointment instructions:\n  - Please bring a valid photo ID and your NHS card\n  - Arrive 15 minutes before your appointment time\n  - Bring any recent lab results, imaging reports, or medication lists that you haven't already shared with us\n\nWe'll keep in touch before your appointment to check on you."
+    },
+    {
+      "role": "patient",
+      "message": ""
+    },
+    {
+      "role": "agent",
+      "message": "Your monitoring period has begun. We'll touch base with you a few times before your appointment to make sure everything is on track. We have 3 scheduled check-ins planned. If you have any concerns or new symptoms at any time, don't hesitate to message us."
+    },
+    {
+      "role": "patient",
+      "message": "Is my appointment still on?"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-03-01 is coming up. Our next scheduled check-in is in about 14 days. If you have any concerns about your symptoms, please let us know and we'll escalate to our clinical team."
+    },
+    {
+      "role": "patient",
+      "message": "I'm worried, is everything ok?"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-03-01 is coming up. Our next scheduled check-in is in about 14 days. If you have any concerns about your symptoms, please let us know and we'll escalate to our clinical team."
+    },
+    {
+      "role": "patient",
+      "message": "Just checking again"
+    },
+    {
+      "role": "agent",
+      "message": "Thank you for your message. Your monitoring is ongoing and your appointment on 2026-03-01 is coming up. Our next scheduled check-in is in about 14 days. If you have any concerns about your symptoms, please let us know and we'll escalate to our clinical team."
+    }
+  ]
+}
