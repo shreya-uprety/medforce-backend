@@ -348,6 +348,8 @@ class TestClinicalQuestionCap:
             diary.clinical.questions_asked.append(
                 ClinicalQuestion(question=f"Question {i}?", answer=f"Answer {i}")
             )
+        # Mark document collection done so scoring proceeds directly
+        diary.clinical.advance_sub_phase(ClinicalSubPhase.COLLECTING_DOCUMENTS)
 
         async def _mock_extract(text):
             return {}

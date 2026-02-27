@@ -204,14 +204,63 @@
   .toolbar-btn.danger { color: var(--red); }
   .toolbar-btn.danger:hover { background: var(--red-dim); }
 
+  /* Chat channel tabs */
+  .chat-tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    padding: 0 16px;
+    gap: 0;
+  }
+  .chat-tab {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .chat-tab:hover { color: var(--text2); }
+  .chat-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .chat-tab .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 100px;
+    background: var(--red);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .chat-tab .badge:empty { display: none; }
+
   /* Messages area */
-  .chat-messages {
+  .chat-messages-wrapper {
     flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .chat-messages {
+    position: absolute;
+    inset: 0;
     overflow-y: auto;
     padding: 16px;
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 4px;
+  }
+  .chat-messages.active {
+    display: flex;
   }
   .msg-row {
     display: flex;
@@ -268,6 +317,85 @@
   .file-icon { font-size: 14px; }
   .file-name { opacity: 0.9; }
   .file-size { opacity: 0.6; font-size: 11px; }
+
+  /* Intake form (inline in chat) */
+  .intake-form-container {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    max-width: 420px;
+  }
+  .intake-form-container h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  .intake-form-container label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+    margin-bottom: 3px;
+    margin-top: 8px;
+  }
+  .intake-form-container label .req { color: var(--red); }
+  .intake-form-container input,
+  .intake-form-container select {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .intake-form-container input:focus,
+  .intake-form-container select:focus {
+    border-color: var(--accent);
+  }
+  .intake-form-container input::placeholder { color: var(--text3); }
+  .intake-form-container .form-section {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .intake-form-container .form-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text3);
+    margin-bottom: 4px;
+  }
+  .intake-form-submit {
+    margin-top: 14px;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .intake-form-submit:hover { opacity: 0.9; }
+  .intake-form-submit:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .intake-form-container.submitted {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .intake-form-container.submitted .intake-form-submit {
+    background: var(--green);
+  }
 
   /* Quick replies */
   .quick-replies {
@@ -671,7 +799,14 @@
       <button class="role-btn" data-role="helper">Helper</button>
       <button class="role-btn" data-role="gp">GP</button>
     </div>
-    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-tabs" id="chatTabs">
+      <button class="chat-tab active" data-channel="pre_consultation" onclick="switchChatTab('pre_consultation',this)">Pre-Consultation</button>
+      <button class="chat-tab" data-channel="monitoring" onclick="switchChatTab('monitoring',this)">Monitoring <span class="badge" id="monBadge"></span></button>
+    </div>
+    <div class="chat-messages-wrapper">
+      <div class="chat-messages active" id="chatPreConsult"></div>
+      <div class="chat-messages" id="chatMonitoring"></div>
+    </div>
     <div class="quick-replies" id="quickReplies"></div>
     <div class="file-staging" id="fileStaging"></div>
     <div class="chat-inputbar">
@@ -769,9 +904,34 @@
 const API = '/api/gateway';
 let currentRole = 'patient';
 let currentPhase = '';
+let currentChatChannel = 'pre_consultation';
 let responseIndex = 0;
+let monBadgeCount = 0;
 let pollTimer = null;
 let stagedFiles = []; // files selected for upload
+
+// ── Chat Channel Tabs ──
+function switchChatTab(channel, el) {
+  currentChatChannel = channel;
+  document.querySelectorAll('.chat-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.chat-messages').forEach(m => m.classList.remove('active'));
+  const containerId = channel === 'monitoring' ? 'chatMonitoring' : 'chatPreConsult';
+  const container = document.getElementById(containerId);
+  container.classList.add('active');
+  container.scrollTop = container.scrollHeight;
+  // Clear badge when switching to that tab
+  if (channel === 'monitoring') {
+    monBadgeCount = 0;
+    document.getElementById('monBadge').textContent = '';
+  }
+}
+
+function incrementMonBadge() {
+  if (currentChatChannel === 'monitoring') return;
+  monBadgeCount++;
+  document.getElementById('monBadge').textContent = String(monBadgeCount);
+}
 
 // ── Role Tabs ──
 document.querySelectorAll('.role-btn').forEach(btn => {
@@ -817,18 +977,95 @@ function onPidChange() {
   refreshAll();
 }
 
-function loadPatient() {
+async function loadPatient() {
   // Sync top bar input → drawer input
   const pid = document.getElementById('pidInput').value.trim();
   if (!pid) return;
   document.getElementById('patientId').value = pid;
-  document.getElementById('chatMessages').innerHTML = '';
+  document.getElementById('chatPreConsult').innerHTML = '';
+  document.getElementById('chatMonitoring').innerHTML = '';
   document.getElementById('eventLog').innerHTML = '';
   responseIndex = 0;
   currentPhase = '';
+  monBadgeCount = 0;
+  document.getElementById('monBadge').textContent = '';
+  // Reset to pre-consultation tab
+  switchChatTab('pre_consultation', document.querySelector('.chat-tab[data-channel="pre_consultation"]'));
   updatePhaseTrack('');
-  addChat(`Loaded patient: ${pid}`, 'system');
+
+  // Rebuild chat history from diary conversation log
+  await rebuildChatHistory(pid);
+
   refreshAll();
+}
+
+async function rebuildChatHistory(pid) {
+  try {
+    // Fetch diary (conversation log) and full responses in parallel
+    const [diaryResp, respResp] = await Promise.all([
+      fetch(`${API}/diary/${pid}`),
+      fetch(`${API}/responses/${pid}`),
+    ]);
+    if (!diaryResp.ok) return;
+    const diaryData = await diaryResp.json();
+    const diary = diaryData.diary;
+    const convLog = diary.conversation_log || [];
+    const respData = await respResp.json();
+    const responses = respData.responses || [];
+
+    // Build a merged timeline: user messages from conversation log,
+    // agent messages from full responses (conversation log truncates to 200 chars).
+    // Agent responses are in order; we interleave them with user entries.
+    let agentIdx = 0;
+    for (const entry of convLog) {
+      const channel = entry.chat_channel || 'pre_consultation';
+      const msg = entry.message;
+      if (!msg) continue;
+
+      if (entry.direction.includes('\u2192AGENT')) {
+        // User/helper/GP → agent (inbound message)
+        let role = 'patient';
+        if (entry.direction.startsWith('HELPER')) role = 'helper';
+        else if (entry.direction.startsWith('GP')) role = 'gp';
+        addChat(msg, 'sent', role, channel);
+      } else if (entry.direction.includes('AGENT\u2192')) {
+        // Agent → patient/helper: use full message from responses if available
+        if (agentIdx < responses.length) {
+          const r = responses[agentIdx];
+          const rChannel = (r.metadata && r.metadata.chat_channel) || 'pre_consultation';
+          addChat(r.message, 'received', 'agent', rChannel);
+          agentIdx++;
+        } else {
+          addChat(msg, 'received', 'agent', channel);
+        }
+      }
+    }
+
+    // If there are remaining responses not matched (edge case), show them
+    while (agentIdx < responses.length) {
+      const r = responses[agentIdx];
+      const rChannel = (r.metadata && r.metadata.chat_channel) || 'pre_consultation';
+      addChat(r.message, 'received', 'agent', rChannel);
+      agentIdx++;
+    }
+
+    // Set responseIndex to skip already-shown responses
+    responseIndex = responses.length;
+
+    // Update phase from diary
+    const phase = diary.header.current_phase;
+    if (phase) {
+      currentPhase = phase;
+      updatePhaseTrack(phase);
+      updateQuickReplies();
+      if (phase === 'monitoring') {
+        switchChatTab('monitoring', document.querySelector('.chat-tab[data-channel="monitoring"]'));
+      }
+    }
+    updateRiskBadge(diary.header.risk_level || 'none');
+  } catch (e) {
+    console.warn('Failed to rebuild chat history:', e);
+  }
 }
 
 // ── File Upload ──
@@ -939,6 +1176,126 @@ function formatBytes(bytes) {
   return `${(bytes/1048576).toFixed(1)} MB`;
 }
 
+// ── Intake Form ──
+function renderIntakeForm() {
+  const container = document.createElement('div');
+  container.className = 'intake-form-container';
+  container.id = 'intakeFormContainer';
+
+  container.innerHTML = `
+    <h3>Patient Registration</h3>
+
+    <label>Full Name <span class="req">*</span></label>
+    <input type="text" id="ifName" placeholder="e.g. Sarah Jones" required>
+
+    <label>Date of Birth <span class="req">*</span></label>
+    <input type="text" id="ifDob" placeholder="DD/MM/YYYY">
+
+    <label>NHS Number <span class="req">*</span></label>
+    <input type="text" id="ifNhs" placeholder="10 digits e.g. 9434765870" maxlength="12">
+
+    <label>Phone Number <span class="req">*</span></label>
+    <input type="text" id="ifPhone" placeholder="e.g. 07700900456">
+
+    <label>GP Name <span class="req">*</span></label>
+    <input type="text" id="ifGpName" placeholder="e.g. Dr. Patel">
+
+    <label>Contact Preference <span class="req">*</span></label>
+    <select id="ifContactPref">
+      <option value="">-- Select --</option>
+      <option value="email">Email</option>
+      <option value="sms">SMS</option>
+      <option value="phone">Phone</option>
+    </select>
+
+    <div class="form-section">
+      <div class="form-section-title">Optional</div>
+      <label>Email Address</label>
+      <input type="email" id="ifEmail" placeholder="e.g. name@example.com">
+      <label>Home Address</label>
+      <input type="text" id="ifAddress" placeholder="e.g. 12 High Street, London">
+      <label>Next of Kin (name + contact)</label>
+      <input type="text" id="ifNextOfKin" placeholder="e.g. Tom Jones 07700900457">
+      <label>GP Practice Name</label>
+      <input type="text" id="ifGpPractice" placeholder="e.g. City Medical Centre">
+    </div>
+
+    <button class="intake-form-submit" id="ifSubmitBtn" disabled onclick="submitIntakeForm()">Submit Details</button>
+  `;
+
+  // Enable submit button when all required fields are filled
+  setTimeout(() => {
+    const reqIds = ['ifName', 'ifDob', 'ifNhs', 'ifPhone', 'ifGpName', 'ifContactPref'];
+    function checkReq() {
+      const allFilled = reqIds.every(id => {
+        const el = document.getElementById(id);
+        return el && el.value.trim() !== '';
+      });
+      const btn = document.getElementById('ifSubmitBtn');
+      if (btn) btn.disabled = !allFilled;
+    }
+    reqIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', checkReq);
+      if (el) el.addEventListener('change', checkReq);
+    });
+  }, 100);
+
+  return container;
+}
+
+async function submitIntakeForm() {
+  const pid = document.getElementById('patientId').value;
+  const formData = {
+    name: document.getElementById('ifName').value.trim(),
+    dob: document.getElementById('ifDob').value.trim(),
+    nhs_number: document.getElementById('ifNhs').value.trim().replace(/\s/g, ''),
+    phone: document.getElementById('ifPhone').value.trim(),
+    gp_name: document.getElementById('ifGpName').value.trim(),
+    contact_preference: document.getElementById('ifContactPref').value,
+    email: document.getElementById('ifEmail').value.trim(),
+    address: document.getElementById('ifAddress').value.trim(),
+    next_of_kin: document.getElementById('ifNextOfKin').value.trim(),
+    gp_practice: document.getElementById('ifGpPractice').value.trim(),
+    channel: 'test_harness',
+    is_helper: currentRole === 'helper',
+  };
+
+  // Remove empty optional fields
+  Object.keys(formData).forEach(k => {
+    if (formData[k] === '' && !['channel', 'is_helper'].includes(k)) delete formData[k];
+  });
+
+  try {
+    const resp = await fetch(`${API}/emit`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        event_type: 'INTAKE_FORM_SUBMITTED',
+        patient_id: pid,
+        sender_role: 'patient',
+        sender_id: pid,
+        payload: formData,
+      }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      const fc = document.getElementById('intakeFormContainer');
+      if (fc) {
+        fc.classList.add('submitted');
+        const btn = document.getElementById('ifSubmitBtn');
+        if (btn) btn.textContent = 'Submitted';
+      }
+      addChat('Form submitted successfully', 'system');
+    } else {
+      addChat(`Form error: ${data.message}`, 'system');
+    }
+  } catch (e) {
+    addChat(`Form submit error: ${e.message}`, 'system');
+  }
+  setTimeout(refreshAll, 500);
+}
+
 // ── Send Message ──
 let _sendingLock = false;
 async function sendMessage(overrideText) {
@@ -983,7 +1340,7 @@ async function sendMessage(overrideText) {
       body: JSON.stringify({
         event_type: 'USER_MESSAGE', patient_id: pid,
         sender_role: senderRole, sender_id: senderId,
-        payload: { text, channel: 'test_harness' },
+        payload: { text, channel: 'test_harness', _source_chat_channel: currentChatChannel },
       }),
     });
     const data = await resp.json();
@@ -995,13 +1352,26 @@ async function sendMessage(overrideText) {
   setTimeout(refreshAll, 500);
 }
 
-function addChat(text, type, role) {
+function addChat(text, type, role, targetChannel) {
   const row = document.createElement('div');
   row.className = `msg-row ${type}`;
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
-  bubble.textContent = text;
+
+  // Detect [SHOW_INTAKE_FORM] marker and render inline form
+  if (text && text.includes('[SHOW_INTAKE_FORM]')) {
+    const cleanText = text.replace('[SHOW_INTAKE_FORM]', '').trim();
+    if (cleanText) {
+      const textNode = document.createElement('div');
+      textNode.textContent = cleanText;
+      textNode.style.marginBottom = '12px';
+      bubble.appendChild(textNode);
+    }
+    bubble.appendChild(renderIntakeForm());
+  } else {
+    bubble.textContent = text;
+  }
   row.appendChild(bubble);
 
   if (role && type !== 'system') {
@@ -1012,7 +1382,10 @@ function addChat(text, type, role) {
     row.appendChild(meta);
   }
 
-  const c = document.getElementById('chatMessages');
+  // Route to the correct chat container
+  const channel = targetChannel || currentChatChannel;
+  const containerId = channel === 'monitoring' ? 'chatMonitoring' : 'chatPreConsult';
+  const c = document.getElementById(containerId);
   c.appendChild(row);
   c.scrollTop = c.scrollHeight;
 }
@@ -1045,7 +1418,8 @@ function addChatWithFiles(text, type, role, attachments) {
     row.appendChild(meta);
   }
 
-  const c = document.getElementById('chatMessages');
+  const containerId = currentChatChannel === 'monitoring' ? 'chatMonitoring' : 'chatPreConsult';
+  const c = document.getElementById(containerId);
   c.appendChild(row);
   c.scrollTop = c.scrollHeight;
 }
@@ -1077,6 +1451,7 @@ function updateQuickReplies() {
     } else if (currentPhase === 'monitoring') {
       btns.push(['Feeling fine', "I'm feeling fine, thanks for checking in."]);
       btns.push(['Getting worse', "I've been feeling worse lately, more fatigue and pain"]);
+      btns.push(['Reschedule', "I need to reschedule my appointment"]);
       btns.push(['Jaundice + confused', 'I have noticed jaundice and confusion over the past few days']);
       btns.push(['More detail', "The pain has been getting worse over the past 3 days, about 7/10 now. I'm also more tired than usual and struggling to eat."]);
       btns.push(['Can manage', "It's uncomfortable but I can still get around and do most things. Maybe 5/10 severity."]);
@@ -1192,20 +1567,29 @@ async function resetPatient() {
   const pid = document.getElementById('pidInput').value.trim() || document.getElementById('patientId').value;
   document.getElementById('patientId').value = pid;
   document.getElementById('pidInput').value = pid;
+  // Pause polling so it doesn't re-fetch the diary while we're resetting
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   try {
-    await fetch(`${API}/reset/${pid}`, { method: 'DELETE' });
-    document.getElementById('chatMessages').innerHTML = '';
+    const resp = await fetch(`${API}/reset/${pid}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    document.getElementById('chatPreConsult').innerHTML = '';
+    document.getElementById('chatMonitoring').innerHTML = '';
     document.getElementById('tabDiary').innerHTML = '<div class="diary-pre" style="color:var(--text3)">Send a message to begin.</div>';
     document.getElementById('eventLog').innerHTML = '';
     document.getElementById('docList').className = 'doc-empty';
     document.getElementById('docList').innerHTML = 'No documents uploaded yet.';
     responseIndex = 0;
     currentPhase = '';
+    monBadgeCount = 0;
+    document.getElementById('monBadge').textContent = '';
+    updateRiskBadge('none');
+    switchChatTab('pre_consultation', document.querySelector('.chat-tab[data-channel="pre_consultation"]'));
     updatePhaseTrack('');
     addChat('Patient reset — ready to start', 'system');
     closeDrawer();
-    refreshAll();
   } catch (e) { addChat(`Reset failed: ${e.message}`, 'system'); }
+  // Resume polling
+  startPolling();
 }
 
 async function injectEvent(eventType, payload = {}) {
@@ -1289,7 +1673,15 @@ async function refreshDiary(pid) {
     const diary = data.diary;
 
     const phase = diary.header.current_phase;
-    if (phase !== currentPhase) { currentPhase = phase; updateQuickReplies(); }
+    if (phase !== currentPhase) {
+      const prevPhase = currentPhase;
+      currentPhase = phase;
+      updateQuickReplies();
+      // Auto-switch to monitoring tab when entering monitoring phase
+      if (phase === 'monitoring' && prevPhase !== 'monitoring') {
+        switchChatTab('monitoring', document.querySelector('.chat-tab[data-channel="monitoring"]'));
+      }
+    }
     updatePhaseTrack(phase);
     updateRiskBadge(diary.header.risk_level || 'none');
 
@@ -1302,12 +1694,23 @@ async function refreshDiary(pid) {
       ['gp_channel', 'GP Channel', false],
     ];
 
+    // Preserve open/closed state across poll refreshes
+    const container = document.getElementById('tabDiary');
+    const prevOpen = {};
+    container.querySelectorAll('.diary-section').forEach(sec => {
+      const lbl = sec.querySelector('.diary-hdr')?.textContent?.replace(/[►▶\u25B6\u25BA]/g, '').trim();
+      const isOpen = sec.querySelector('.diary-body')?.classList.contains('open');
+      if (lbl) prevOpen[lbl] = isOpen;
+    });
+
     let html = '';
-    for (const [key, label, open] of sections) {
+    for (const [key, label, defaultOpen] of sections) {
       const val = diary[key];
       if (val === undefined) continue;
       const json = JSON.stringify(val, null, 2);
       const hl = highlight(json);
+      // Use previous state if available, otherwise use default
+      const open = (label in prevOpen) ? prevOpen[label] : defaultOpen;
       html += `<div class="diary-section">
         <div class="diary-hdr" onclick="toggleDiary(this)">
           <span class="chevron ${open?'open':''}">&#9654;</span>${label}
@@ -1315,7 +1718,7 @@ async function refreshDiary(pid) {
         <div class="diary-body ${open?'open':''}"><pre class="diary-pre">${hl}</pre></div>
       </div>`;
     }
-    document.getElementById('tabDiary').innerHTML = html;
+    container.innerHTML = html;
   } catch (e) {}
 }
 
@@ -1356,7 +1759,13 @@ async function refreshResponses(pid) {
     const resp = await fetch(`${API}/responses/${pid}`);
     const data = await resp.json();
     for (let i = responseIndex; i < data.responses.length; i++) {
-      addChat(data.responses[i].message, 'received', 'agent');
+      const r = data.responses[i];
+      const channel = (r.metadata && r.metadata.chat_channel) || 'pre_consultation';
+      addChat(r.message, 'received', 'agent', channel);
+      // Show badge if message arrived in non-active tab
+      if (channel === 'monitoring' && currentChatChannel !== 'monitoring') {
+        incrementMonBadge();
+      }
     }
     responseIndex = data.responses.length;
   } catch (e) {}

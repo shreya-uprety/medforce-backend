@@ -136,13 +136,12 @@ class TestClinicalQuestionPlan:
 
     @pytest.mark.asyncio
     async def test_generates_personalized_questions(self):
-        """LLM returns 5 ranked questions → stored in generated_questions."""
+        """LLM returns 4 ranked questions → stored in generated_questions."""
         llm_questions = [
             "Have you noticed any yellowing of your skin or eyes recently?",
             "How has your alcohol consumption been in the past month?",
             "Are you experiencing any abdominal swelling or fluid retention?",
             "Have you had any episodes of confusion or disorientation?",
-            "How would you rate your current pain on a scale of 0 to 10?",
         ]
         mock_client = make_mock_llm(json.dumps(llm_questions))
         agent = ClinicalAgent(llm_client=mock_client)
@@ -195,9 +194,10 @@ class TestClinicalQuestionPlan:
         await agent._generate_question_plan(diary)
 
         assert len(diary.clinical.generated_questions) > 0
-        # Fallback for cirrhosis should mention alcohol
+        # Fallback for cirrhosis should reference the condition
         assert any(
-            "alcohol" in q.lower()
+            "cirrhosis" in q.lower() or "confusion" in q.lower()
+            or "abdominal pain" in q.lower()
             for q in diary.clinical.generated_questions
         )
 
@@ -215,30 +215,20 @@ class TestClinicalQuestionPlan:
         assert len(diary.clinical.generated_questions) > 0
 
     @pytest.mark.asyncio
-    async def test_planned_questions_used_in_conversation(self):
-        """Generated questions from the plan are used when asking next question."""
-        planned = [
-            "Have you noticed any yellowing of your skin?",
-            "How is your alcohol intake?",
-            "Any abdominal swelling?",
-        ]
-        mock_client = make_mock_llm(json.dumps(planned))
+    async def test_contextual_question_used_in_conversation(self):
+        """LLM contextual question is used directly (no pre-generated plan)."""
+        contextual_q = "Have you noticed any yellowing of your skin?"
+        mock_client = make_mock_llm(contextual_q)
         agent = ClinicalAgent(llm_client=mock_client)
         diary = make_diary()
         diary.clinical.chief_complaint = "liver pain"
         diary.clinical.condition_context = "cirrhosis"
 
-        await agent._generate_question_plan(diary)
-        assert diary.clinical.generated_questions == planned
-
-        # Ask next question — should pick from the plan
-        mock_client.models.generate_content.reset_mock()
         event = EventEnvelope.user_message(patient_id="PT-200", text="liver pain")
-
         result = await agent._ask_next_question(event, diary, "websocket")
 
         asked = [q.question for q in result.updated_diary.clinical.questions_asked]
-        assert planned[0] in asked
+        assert contextual_q in asked
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -476,6 +466,7 @@ class TestReferralAnalysisLLM:
             "Any abdominal swelling or fluid retention?",
         ])
         # First LLM call: referral analysis. Second: question plan.
+        # (Welcome and first question use templates — no LLM needed.)
         mock_client = make_mock_llm_sequence([referral_data, question_plan])
         agent = ClinicalAgent(llm_client=mock_client)
         diary = make_diary(sub_phase=ClinicalSubPhase.NOT_STARTED)
@@ -492,9 +483,9 @@ class TestReferralAnalysisLLM:
 
         assert result.updated_diary.clinical.condition_context == "cirrhosis"
         assert result.updated_diary.clinical.chief_complaint == "suspected cirrhosis"
-        assert len(result.updated_diary.clinical.generated_questions) == 3
+        assert len(result.updated_diary.clinical.generated_questions) == 2
         assert result.updated_diary.clinical.sub_phase == ClinicalSubPhase.ASKING_QUESTIONS
-        assert "referral letter" in result.responses[0].message.lower()
+        assert "referral" in result.responses[0].message.lower()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -965,3 +956,244 @@ class TestDeteriorationAssessmentLLM:
 
         # Patient-facing message should mention appointment
         assert "appointment" in result4.responses[0].message.lower()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Clinical Agent — Adaptive Follow-Up Questions
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestAdaptiveFollowUp:
+    """Adaptive follow-up questions between plan questions."""
+
+    @pytest.mark.asyncio
+    async def test_llm_followup_triggered_on_concerning_answer(self):
+        """LLM returns a follow-up question when patient says something concerning."""
+        followup_json = json.dumps({
+            "followup": True,
+            "question": "When did you first notice this change?",
+        })
+        mock_client = make_mock_llm_sequence([
+            # _extract_clinical_data
+            json.dumps({}),
+            # _evaluate_followup
+            followup_json,
+        ])
+        agent = ClinicalAgent(llm_client=mock_client)
+        diary = make_clinical_diary(n_questions=0)
+        diary.clinical.awaiting_followup = True
+
+        # Add an unanswered plan question
+        diary.clinical.questions_asked.append(
+            ClinicalQuestion(question="Has the pain worsened since your GP visit?")
+        )
+
+        event = EventEnvelope.user_message(
+            patient_id="PT-200",
+            text="Yes, it has worsened significantly over the last week",
+        )
+        result = await agent.process(event, diary)
+
+        # Follow-up should be asked
+        last_q = result.updated_diary.clinical.questions_asked[-1]
+        assert last_q.is_followup is True
+        assert "change" in last_q.question.lower()
+        assert result.responses[0].message == last_q.question
+
+    @pytest.mark.asyncio
+    async def test_no_followup_on_trivial_answer(self):
+        """Trivial answers ('no', 'yes') skip follow-up evaluation entirely."""
+        mock_client = make_mock_llm_sequence([
+            # _extract_clinical_data
+            json.dumps({}),
+        ])
+        agent = ClinicalAgent(llm_client=mock_client)
+        diary = make_clinical_diary(n_questions=0)
+        diary.clinical.awaiting_followup = True
+        diary.clinical.allergies_addressed = True
+        # Add remaining plan questions so we don't hit sufficiency
+        diary.clinical.generated_questions = ["Next plan question?"]
+
+        diary.clinical.questions_asked.append(
+            ClinicalQuestion(question="Have you noticed any yellowing?")
+        )
+
+        event = EventEnvelope.user_message(
+            patient_id="PT-200", text="No",
+        )
+        result = await agent.process(event, diary)
+
+        # Should move to next plan question, NOT ask a follow-up
+        last_q = result.updated_diary.clinical.questions_asked[-1]
+        assert last_q.is_followup is False
+        assert last_q.question == "Next plan question?"
+
+    @pytest.mark.asyncio
+    async def test_followup_does_not_chain(self):
+        """A follow-up answer NEVER triggers another follow-up (no chaining)."""
+        mock_client = make_mock_llm_sequence([
+            # _extract_clinical_data
+            json.dumps({}),
+        ])
+        agent = ClinicalAgent(llm_client=mock_client)
+        diary = make_clinical_diary(n_questions=0)
+        diary.clinical.awaiting_followup = True
+        diary.clinical.allergies_addressed = True
+        # Add remaining plan questions so we don't hit sufficiency
+        diary.clinical.generated_questions = ["Next plan question?"]
+
+        # The pending question is a follow-up
+        diary.clinical.questions_asked.append(
+            ClinicalQuestion(
+                question="When did this change start?",
+                is_followup=True,
+            )
+        )
+
+        event = EventEnvelope.user_message(
+            patient_id="PT-200",
+            text="It started last week and has been getting much worse every day",
+        )
+        result = await agent.process(event, diary)
+
+        # Should NOT produce another follow-up — straight to next plan Q
+        last_q = result.updated_diary.clinical.questions_asked[-1]
+        assert last_q.is_followup is False
+        assert last_q.question == "Next plan question?"
+        # awaiting_followup should be cleared
+        assert result.updated_diary.clinical.awaiting_followup is True  # re-set by _ask_next_question
+
+    @pytest.mark.asyncio
+    async def test_deterministic_followup_worsening(self):
+        """Deterministic fallback triggers follow-up on worsening keywords."""
+        agent = ClinicalAgent()
+        result = agent._deterministic_followup(
+            "yes it has worsened quite a bit", "Has the pain changed?"
+        )
+        assert result is not None
+        assert "gradual" in result.lower() or "sudden" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_deterministic_followup_emergency(self):
+        """Deterministic fallback triggers follow-up on emergency keywords."""
+        agent = ClinicalAgent()
+        result = agent._deterministic_followup(
+            "I collapsed yesterday and felt very confused",
+            "Any new symptoms?",
+        )
+        assert result is not None
+        assert "recently" in result.lower() or "once" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_deterministic_followup_severe_pain(self):
+        """Deterministic fallback triggers follow-up on severe pain (>=7/10)."""
+        agent = ClinicalAgent()
+        result = agent._deterministic_followup(
+            "The pain is about 8 out of 10 now",
+            "How severe is the pain?",
+        )
+        assert result is not None
+        assert "constant" in result.lower() or "come and go" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_deterministic_followup_no_match(self):
+        """Deterministic fallback returns None for unremarkable answers."""
+        agent = ClinicalAgent()
+        result = agent._deterministic_followup(
+            "It's been about the same really", "Has the pain changed?"
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_deterministic_followup_functional_impact(self):
+        """Deterministic fallback triggers on functional impact keywords."""
+        agent = ClinicalAgent()
+        result = agent._deterministic_followup(
+            "I can't sleep at all because of the pain",
+            "How is it affecting you?",
+        )
+        assert result is not None
+        assert "gradual" in result.lower() or "moment" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_llm_followup_returns_false(self):
+        """LLM says no follow-up needed → proceeds to next plan question."""
+        followup_json = json.dumps({"followup": False})
+        mock_client = make_mock_llm_sequence([
+            # _extract_clinical_data
+            json.dumps({}),
+            # _evaluate_followup
+            followup_json,
+        ])
+        agent = ClinicalAgent(llm_client=mock_client)
+        diary = make_clinical_diary(n_questions=0)
+        diary.clinical.awaiting_followup = True
+        diary.clinical.allergies_addressed = True
+        diary.clinical.generated_questions = ["Next plan question?"]
+
+        diary.clinical.questions_asked.append(
+            ClinicalQuestion(question="Has the pain worsened?")
+        )
+
+        event = EventEnvelope.user_message(
+            patient_id="PT-200",
+            text="It's been about the same, nothing major to report",
+        )
+        result = await agent.process(event, diary)
+
+        # Should proceed to next plan question
+        last_q = result.updated_diary.clinical.questions_asked[-1]
+        assert last_q.is_followup is False
+        assert last_q.question == "Next plan question?"
+
+    @pytest.mark.asyncio
+    async def test_questions_sufficient_blocked_by_generated_questions(self):
+        """_questions_sufficient returns False while plan questions remain."""
+        agent = ClinicalAgent()
+        diary = make_clinical_diary(n_questions=5, answered=True)
+        diary.clinical.referral_analysis = {"chief_complaint": "pain"}
+        diary.clinical.meds_addressed = True
+        diary.clinical.allergies_addressed = True
+        diary.clinical.generated_questions = ["Remaining plan Q?"]
+
+        assert agent._questions_sufficient(diary) is False
+
+    @pytest.mark.asyncio
+    async def test_questions_sufficient_blocked_by_awaiting_followup(self):
+        """_questions_sufficient returns False while awaiting follow-up evaluation."""
+        agent = ClinicalAgent()
+        diary = make_clinical_diary(n_questions=5, answered=True)
+        diary.clinical.referral_analysis = {"chief_complaint": "pain"}
+        diary.clinical.meds_addressed = True
+        diary.clinical.allergies_addressed = True
+        diary.clinical.awaiting_followup = True
+
+        assert agent._questions_sufficient(diary) is False
+
+    @pytest.mark.asyncio
+    async def test_intake_complete_sets_awaiting_followup(self):
+        """INTAKE_COMPLETE sets awaiting_followup after the first plan question."""
+        question_plan = json.dumps([
+            "How has your pain been?",
+            "Any yellowing?",
+            "Any swelling?",
+            "How is daily life?",
+            "Any concerns?",
+        ])
+        mock_client = make_mock_llm(question_plan)
+        agent = ClinicalAgent(llm_client=mock_client)
+        diary = make_diary(sub_phase=ClinicalSubPhase.NOT_STARTED)
+        diary.clinical.chief_complaint = "liver pain"
+        diary.clinical.condition_context = "cirrhosis"
+
+        event = EventEnvelope.handoff(
+            event_type=EventType.INTAKE_COMPLETE,
+            patient_id="PT-200",
+            source_agent="intake",
+            payload={"channel": "websocket"},
+        )
+
+        result = await agent.process(event, diary)
+
+        assert result.updated_diary.clinical.awaiting_followup is True
+        assert len(result.updated_diary.clinical.questions_asked) == 1

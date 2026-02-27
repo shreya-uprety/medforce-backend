@@ -21,9 +21,11 @@ The monitoring plan is a loop, not a straight line:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -173,9 +175,72 @@ Return a JSON object:
 Return ONLY valid JSON.\
 """
 
+NATURAL_RESPONSE_PROMPT = """\
+You are a friendly, caring clinic nurse messaging a patient during their \
+monitoring period. The patient has sent a message and you need to respond \
+naturally and warmly.
+
+Patient name: {patient_name}
+Patient message: "{patient_message}"
+Appointment date: {appointment_date}
+Risk level: {risk_level}
+Was this a reply to a check-in question: {is_checkin_reply}
+
+Rules:
+1. Acknowledge what the patient actually said — reference their words
+2. NEVER start with "Thank you for your message" or "Thank you for contacting"
+3. Keep it brief: 2-4 sentences
+4. Sound like a caring nurse, not a template
+5. If the patient asked a question, answer it directly
+6. Mention their upcoming appointment naturally if relevant
+7. If high/critical risk, gently remind about emergency contacts
+
+Return ONLY your message text.\
+"""
+
+HEARTBEAT_CHECKIN_PROMPT = """\
+You are a friendly clinic nurse sending a scheduled check-in to a patient \
+during their monitoring period. Generate a warm, natural check-in message.
+
+Patient name: {patient_name}
+Days since assessment: {days}
+Condition: {condition}
+Risk level: {risk_level}
+Appointment date: {appointment_date}
+Scheduled question to include: {question}
+
+Rules:
+1. Sound warm and personal — like a nurse who remembers this patient
+2. NEVER start with "Hi [name], this is your scheduled check-in"
+3. Include the clinical question naturally
+4. Keep it 2-4 sentences
+5. Reference day count or appointment only if it adds value
+
+Return ONLY your message text.\
+"""
+
+BOOKING_WELCOME_PROMPT = """\
+You are a friendly clinic nurse welcoming a patient into their monitoring \
+period after their appointment has been booked.
+
+Patient name: {patient_name}
+Risk level: {risk_level}
+Number of planned check-ins: {total_messages}
+Condition: {condition}
+
+Rules:
+1. Warmly welcome them to the monitoring period
+2. Explain the check-in plan briefly and naturally
+3. Reassure them they can message anytime
+4. Sound like a caring nurse, 3-5 sentences
+5. NEVER use bullet points or numbered lists
+
+Return ONLY your message text.\
+"""
+
 DETERIORATION_QUESTION_PROMPT = """\
 You are a clinical triage nurse AI. A patient in monitoring has reported \
-worsening symptoms. You need to ask a targeted follow-up question.
+worsening symptoms. You need to ask ONE short follow-up question.
 
 Patient context:
 - Condition: {condition}
@@ -185,14 +250,17 @@ Patient context:
 - Questions already asked and answered:
 {previous_qa}
 
-Generate the single most important follow-up question to assess the \
-severity of their deterioration. Focus on:
-1. Specific symptom details (onset, duration, severity scale 1-10)
-2. New or worsening symptoms relevant to their condition
-3. Functional impact (can they do daily activities?)
-4. Emergency red flags
+RULES:
+- Ask exactly ONE question about ONE topic. Do NOT combine multiple questions.
+- Keep it under 2 sentences.
+- Pick the single most important topic not yet covered:
+  * Symptom details (location, onset, severity)
+  * New or worsening symptoms
+  * Functional impact on daily life
+  * Emergency red flags
+- Be empathetic and conversational.
 
-Be empathetic and professional. Return ONLY the question text.\
+Return ONLY the question text — one question, one topic.\
 """
 
 
@@ -225,7 +293,10 @@ class MonitoringAgent(BaseAgent):
             return await self._handle_booking_complete(event, diary)
 
         if event.event_type == EventType.HEARTBEAT:
-            return self._handle_heartbeat(event, diary)
+            return await self._handle_heartbeat(event, diary)
+
+        if event.event_type == EventType.CROSS_PHASE_REPROMPT:
+            return self._handle_reprompt(event, diary)
 
         if event.event_type == EventType.USER_MESSAGE:
             return await self._handle_user_message(event, diary)
@@ -238,9 +309,104 @@ class MonitoringAgent(BaseAgent):
         )
         return AgentResult(updated_diary=diary)
 
+    def _handle_reprompt(
+        self, event: EventEnvelope, diary: PatientDiary
+    ) -> AgentResult:
+        """Re-prompt patient after a cross-phase interaction during monitoring."""
+        # If a deterioration assessment is active, the assessment flow is
+        # already driving the conversation — suppress the reprompt.
+        assessment = diary.monitoring.deterioration_assessment
+        if assessment.active and not assessment.assessment_complete:
+            return AgentResult(updated_diary=diary)
+
+        channel = event.payload.get("channel", "websocket")
+        response = AgentResponse(
+            recipient="patient",
+            channel=channel,
+            message=(
+                "We're still here if you need anything — just send us a message anytime."
+            ),
+            metadata={"patient_id": event.patient_id},
+        )
+        return AgentResult(updated_diary=diary, responses=[response])
+
     # ── Event Handlers ──
 
     async def _handle_booking_complete(
+        self, event: EventEnvelope, diary: PatientDiary
+    ) -> AgentResult:
+        """Set up monitoring or resume after reschedule."""
+        # Detect reschedule: if a communication plan already exists, this is a rebooking
+        is_reschedule = (
+            diary.monitoring.communication_plan is not None
+            and diary.monitoring.communication_plan.generated
+        )
+
+        if is_reschedule:
+            return await self._handle_rebook(event, diary)
+        return await self._handle_initial_booking(event, diary)
+
+    async def _handle_rebook(
+        self, event: EventEnvelope, diary: PatientDiary
+    ) -> AgentResult:
+        """Resume monitoring after a reschedule — keep existing plan, update appointment."""
+        diary.monitoring.monitoring_active = True
+        diary.monitoring.appointment_date = event.payload.get(
+            "appointment_date", diary.monitoring.appointment_date
+        )
+        diary.header.current_phase = Phase.MONITORING
+        channel = event.payload.get("channel", "websocket")
+
+        appt_date = diary.monitoring.appointment_date or "your new appointment"
+        patient_name = diary.intake.name or "there"
+
+        # Try LLM for a natural rebook acknowledgement
+        rebook_msg = ""
+        try:
+            if self.client is not None:
+                prompt = (
+                    f"You are a friendly clinic nurse. The patient {patient_name} "
+                    f"just rescheduled their appointment to {appt_date}. "
+                    f"Briefly confirm the new date and reassure them that "
+                    f"monitoring continues as before. 1-2 sentences, warm tone. "
+                    f"Do NOT welcome them to the monitoring program again. "
+                    f"Return ONLY your message text."
+                )
+                raw = await llm_generate(self.client, self._model_name, prompt)
+                if raw:
+                    rebook_msg = raw.strip()
+        except Exception as exc:
+            logger.warning("LLM rebook message failed: %s — using fallback", exc)
+
+        if not rebook_msg:
+            rebook_msg = (
+                f"Your appointment has been rescheduled to {appt_date}. "
+                f"We'll continue monitoring you as before — don't hesitate to "
+                f"reach out if anything comes up."
+            )
+
+        diary.monitoring.add_entry(MonitoringEntry(
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            type="reschedule",
+            action="Appointment rescheduled, monitoring resumed",
+            detail=f"New appointment: {appt_date}",
+        ))
+
+        logger.info(
+            "Monitoring resumed after reschedule for patient %s — new date: %s",
+            event.patient_id, appt_date,
+        )
+
+        return AgentResult(updated_diary=diary, responses=[
+            AgentResponse(
+                recipient="patient",
+                channel=channel,
+                message=rebook_msg,
+                metadata={"patient_id": event.patient_id},
+            ),
+        ])
+
+    async def _handle_initial_booking(
         self, event: EventEnvelope, diary: PatientDiary
     ) -> AgentResult:
         """Set up monitoring with a personalized communication plan."""
@@ -268,8 +434,11 @@ class MonitoringAgent(BaseAgent):
             check_in_days=schedule["check_days"],
         )
 
-        # Generate personalized questions
-        questions = await self._generate_monitoring_questions(diary, schedule["total_messages"])
+        # Generate questions and welcome message in parallel for speed
+        questions_task = self._generate_monitoring_questions(diary, schedule["total_messages"])
+        welcome_task = self._generate_natural_welcome(diary, plan)
+        questions, welcome_msg = await asyncio.gather(questions_task, welcome_task)
+
         plan.questions = self._assign_questions_to_schedule(questions, schedule["check_days"])
         plan.generated = True
 
@@ -281,25 +450,27 @@ class MonitoringAgent(BaseAgent):
 
         channel = event.payload.get("channel", "websocket")
 
-        # Build personalized welcome message
-        risk_msg = {
-            "critical": "Given the urgency of your case, we'll be checking in frequently",
-            "high": "We'll be monitoring you closely with regular check-ins",
-            "medium": "We'll check in with you periodically",
-            "low": "We'll touch base with you a few times",
-        }
-        freq_text = risk_msg.get(risk_level, "We'll check in with you periodically")
-
-        response = AgentResponse(
-            recipient="patient",
-            channel=channel,
-            message=(
+        if not welcome_msg:
+            # Fallback to template
+            risk_msg = {
+                "critical": "Given the urgency of your case, we'll be checking in frequently",
+                "high": "We'll be monitoring you closely with regular check-ins",
+                "medium": "We'll check in with you periodically",
+                "low": "We'll touch base with you a few times",
+            }
+            freq_text = risk_msg.get(risk_level, "We'll check in with you periodically")
+            welcome_msg = (
                 f"Your monitoring period has begun. {freq_text} before your "
                 f"appointment to make sure everything is on track. "
                 f"We have {plan.total_messages} scheduled check-ins planned. "
                 f"If you have any concerns or new symptoms at any time, "
                 f"don't hesitate to message us."
-            ),
+            )
+
+        response = AgentResponse(
+            recipient="patient",
+            channel=channel,
+            message=welcome_msg,
             metadata={"patient_id": event.patient_id},
         )
 
@@ -324,7 +495,7 @@ class MonitoringAgent(BaseAgent):
 
         return AgentResult(updated_diary=diary, responses=[response])
 
-    def _handle_heartbeat(
+    async def _handle_heartbeat(
         self, event: EventEnvelope, diary: PatientDiary
     ) -> AgentResult:
         """
@@ -368,12 +539,8 @@ class MonitoringAgent(BaseAgent):
                     break
 
         if scheduled_q:
-            # Deliver the personalized question
-            patient_name = diary.intake.name or "there"
-            message = (
-                f"Hi {patient_name}, this is your scheduled check-in "
-                f"(day {days} of monitoring).\n\n{scheduled_q.question}"
-            )
+            # Deliver the personalized question with LLM-generated natural framing
+            message = await self._generate_natural_checkin(days, diary, scheduled_q.question)
             scheduled_q.sent = True
 
             responses.append(AgentResponse(
@@ -391,7 +558,7 @@ class MonitoringAgent(BaseAgent):
             ))
         else:
             # Generic milestone check-in
-            message = self._generate_milestone_message(days, diary)
+            message = await self._generate_natural_checkin(days, diary, None)
             if message:
                 responses.append(AgentResponse(
                     recipient="patient",
@@ -442,9 +609,23 @@ class MonitoringAgent(BaseAgent):
         channel = event.payload.get("channel", "websocket")
 
         # ── If we're in an active deterioration assessment, process the answer ──
+        # Assessment takes priority over cross-phase routing — every patient
+        # message during an active assessment belongs to the monitoring agent.
         assessment = diary.monitoring.deterioration_assessment
         if assessment.active and not assessment.assessment_complete:
             return await self._process_deterioration_answer(event, diary, text, channel)
+
+        # ── Cross-phase suppression: if cross-phase content detected and no
+        #    monitoring-priority keywords, let the cross-phase agent handle it ──
+        has_cross_phase = event.payload.get("_has_cross_phase_content", False)
+        if has_cross_phase and not self._has_monitoring_priority_keywords(text):
+            diary.monitoring.add_entry(MonitoringEntry(
+                date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                type="cross_phase_data",
+                action="Cross-phase content detected — routed to specialist agent",
+                detail=text[:200],
+            ))
+            return AgentResult(updated_diary=diary)
 
         # ── Post-emergency: patient already told to call 999, acknowledge simply ──
         if assessment.assessment_complete and assessment.severity == "emergency":
@@ -543,6 +724,46 @@ class MonitoringAgent(BaseAgent):
                 event, diary, pattern_detected, text, channel
             )
 
+        # ── Extract lab values from free-text and check thresholds ──
+        text_lab_values = self._extract_lab_values_from_text(text)
+        if text_lab_values:
+            abs_alerts = self._check_absolute_thresholds(text_lab_values)
+            if abs_alerts:
+                diary.monitoring.add_entry(MonitoringEntry(
+                    date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    type="lab_text_alert",
+                    action="Critical lab values reported in chat",
+                    detail=str(text_lab_values),
+                ))
+                alert_event = EventEnvelope.handoff(
+                    event_type=EventType.DETERIORATION_ALERT,
+                    patient_id=event.patient_id,
+                    source_agent="monitoring",
+                    payload={
+                        "new_values": text_lab_values,
+                        "alerts": abs_alerts,
+                        "channel": channel,
+                    },
+                    correlation_id=event.correlation_id,
+                )
+                response = AgentResponse(
+                    recipient="patient",
+                    channel=channel,
+                    message=(
+                        "Thank you for sharing those results. Some of these values "
+                        "are outside the expected range and need urgent attention. "
+                        "I've flagged this to the clinical team and they will be in "
+                        "touch with you shortly. If you feel unwell, please contact "
+                        "your GP or call 111."
+                    ),
+                    metadata={"patient_id": event.patient_id},
+                )
+                return AgentResult(
+                    updated_diary=diary,
+                    emitted_events=[alert_event],
+                    responses=[response],
+                )
+
         # ── Decide if LLM evaluation is needed ──
         # Short/neutral messages and clearly reassuring responses skip LLM
         # to prevent false-positive escalations on "no", "ok", "no change", etc.
@@ -580,10 +801,9 @@ class MonitoringAgent(BaseAgent):
         ))
 
         # If this was a reply to a scheduled check-in, give a tailored ack
-        if last_sent:
-            response_msg = self._generate_checkin_acknowledgement(diary, text)
-        else:
-            response_msg = self._generate_normal_response(diary)
+        response_msg = await self._generate_natural_response(
+            diary, text, is_checkin_reply=last_sent is not None
+        )
 
         response = AgentResponse(
             recipient="patient",
@@ -696,8 +916,28 @@ class MonitoringAgent(BaseAgent):
             )
             return AgentResult(updated_diary=diary, responses=[response])
 
+        # Safety: rebuild baseline from clinical docs if empty
+        if not diary.monitoring.baseline:
+            baseline = {}
+            for doc in diary.clinical.documents:
+                if doc.extracted_values:
+                    baseline.update(doc.extracted_values)
+            diary.monitoring.baseline = baseline
+            if baseline:
+                logger.info("Rebuilt monitoring baseline from clinical docs: %s", list(baseline.keys()))
+
         comparison = self._compare_values(diary.monitoring.baseline, new_values)
         deteriorating = comparison.get("deteriorating", [])
+
+        # Safety net: even without baseline comparison, check if new lab values
+        # exceed absolute critical thresholds (same rules as RiskScorer).
+        # This catches cases where baseline is empty or doesn't have matching params.
+        if not deteriorating:
+            absolute_alerts = self._check_absolute_thresholds(new_values)
+            if absolute_alerts:
+                deteriorating = absolute_alerts
+                comparison["deteriorating"] = deteriorating
+                comparison.setdefault("changes", []).extend(absolute_alerts)
 
         diary.monitoring.add_entry(MonitoringEntry(
             date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -1161,6 +1401,26 @@ class MonitoringAgent(BaseAgent):
 
     # ── Deterioration Assessment Flow ──
 
+    @staticmethod
+    def _has_monitoring_priority_keywords(text: str) -> bool:
+        """Check for keywords that monitoring must handle — NOT suppressed by cross-phase."""
+        text_lower = text.lower()
+        # True emergencies
+        emergency_kws = [
+            "unconscious", "seizure", "collapse", "hematemesis",
+            "encephalopathy", "chest pain", "can't breathe",
+            "confusion", "confused", "bleeding", "blood", "jaundice",
+            "severe pain",
+        ]
+        # Deterioration triggers (monitoring owns the assessment flow)
+        deterioration_kws = [
+            "worse", "worsening", "deteriorating", "fatigue", "tired",
+            "swelling", "numbness", "fainting", "fainted",
+            "breathless", "breathlessness", "palpitations",
+        ]
+        all_kws = emergency_kws + deterioration_kws
+        return any(kw in text_lower for kw in all_kws)
+
     def _check_concerning_patterns(
         self, text_lower: str, diary: PatientDiary
     ) -> tuple[bool, list[str]]:
@@ -1293,9 +1553,9 @@ class MonitoringAgent(BaseAgent):
 
         patient_name = diary.intake.name or "there"
         response_msg = (
-            f"I'm sorry to hear you're not feeling well, {patient_name}. "
-            f"I need to ask you a few quick questions so our clinical team "
-            f"can properly assess the situation.\n\n{first_question}"
+            f"I'm sorry to hear that, {patient_name}. "
+            f"Let me ask a couple of quick questions to help our team.\n\n"
+            f"{first_question}"
         )
 
         response = AgentResponse(
@@ -1327,6 +1587,9 @@ class MonitoringAgent(BaseAgent):
         unanswered = [q for q in assessment.questions if q.answer is None]
         if unanswered:
             unanswered[0].answer = text
+
+        # Extract structured clinical data from the answer
+        self._extract_assessment_data(text, diary)
 
         # Check for emergency keywords in the answer itself
         # But respect negations: "no jaundice", "no confusion" should not trigger
@@ -1595,14 +1858,37 @@ class MonitoringAgent(BaseAgent):
         if question_index == 2:
             return (
                 "On a scale of 1 to 10, how severe would you say your symptoms "
-                "are right now? And are you still able to manage your daily "
-                "activities like eating, moving around, and looking after yourself?"
+                "are right now?"
             )
 
         return (
             "Is there anything else about how you're feeling that you think "
             "is important for us to know?"
         )
+
+    @staticmethod
+    def _extract_assessment_data(text: str, diary: PatientDiary) -> None:
+        """Extract structured clinical data from assessment answers into the diary."""
+        text_lower = text.lower().strip()
+        pain_match = re.search(r'(\d{1,2})\s*(?:/\s*10|out\s+of\s+10)', text_lower)
+        if pain_match:
+            level = int(pain_match.group(1))
+            if 0 <= level <= 10:
+                diary.clinical.pain_level = level
+
+        # Pain location
+        location_patterns = [
+            r'(?:pain\s+(?:in|at|around)\s+(?:my\s+|the\s+)?)([\w\s]+?)(?:\.|,|$)',
+            r'(?:upper|lower)\s+(?:right|left)\s+(?:abdomen|quadrant|side)',
+            r'(?:right|left)\s+(?:upper|lower)\s+(?:abdomen|quadrant|side)',
+        ]
+        for pattern in location_patterns:
+            loc_match = re.search(pattern, text_lower)
+            if loc_match:
+                location = loc_match.group(0).strip().rstrip('.,')
+                if diary.clinical.pain_location is None:
+                    diary.clinical.pain_location = location
+                break
 
     async def _assess_severity(
         self,
@@ -1771,10 +2057,80 @@ class MonitoringAgent(BaseAgent):
         )
         return msg
 
-    def _generate_checkin_acknowledgement(
+    async def _generate_natural_checkin(
+        self, days: int, diary: PatientDiary, question: str | None
+    ) -> str:
+        """Generate a natural heartbeat check-in message with LLM, fallback to template."""
+        try:
+            if self.client is not None:
+                prompt = HEARTBEAT_CHECKIN_PROMPT.format(
+                    patient_name=diary.intake.name or "there",
+                    days=days,
+                    condition=diary.clinical.condition_context or "general",
+                    risk_level=diary.header.risk_level.value,
+                    appointment_date=diary.monitoring.appointment_date or "upcoming",
+                    question=question or "Just a general check-in — how are you feeling?",
+                )
+                raw = await llm_generate(self.client, self._model_name, prompt)
+                if raw:
+                    return raw.strip()
+        except Exception as exc:
+            logger.warning("LLM heartbeat check-in failed: %s — using fallback", exc)
+
+        if question:
+            patient_name = diary.intake.name or "there"
+            return (
+                f"Hi {patient_name}, this is your scheduled check-in "
+                f"(day {days} of monitoring).\n\n{question}"
+            )
+        return self._fallback_milestone_message(days, diary)
+
+    async def _generate_natural_welcome(
+        self, diary: PatientDiary, plan: CommunicationPlan
+    ) -> str:
+        """Generate a natural monitoring welcome message with LLM, fallback to template."""
+        try:
+            if self.client is not None:
+                prompt = BOOKING_WELCOME_PROMPT.format(
+                    patient_name=diary.intake.name or "there",
+                    risk_level=diary.header.risk_level.value,
+                    total_messages=plan.total_messages,
+                    condition=diary.clinical.condition_context or "your condition",
+                )
+                raw = await llm_generate(self.client, self._model_name, prompt)
+                if raw:
+                    return raw.strip()
+        except Exception as exc:
+            logger.warning("LLM booking welcome failed: %s — using fallback", exc)
+        return ""  # empty means caller uses the template
+
+    async def _generate_natural_response(
+        self, diary: PatientDiary, patient_text: str, is_checkin_reply: bool
+    ) -> str:
+        """Generate a natural LLM response with deterministic fallback."""
+        try:
+            if self.client is not None:
+                prompt = NATURAL_RESPONSE_PROMPT.format(
+                    patient_name=diary.intake.name or "there",
+                    patient_message=patient_text[:500],
+                    appointment_date=diary.monitoring.appointment_date or "your upcoming appointment",
+                    risk_level=diary.header.risk_level.value,
+                    is_checkin_reply="yes" if is_checkin_reply else "no",
+                )
+                raw = await llm_generate(self.client, self._model_name, prompt)
+                if raw and not raw.strip().lower().startswith("thank you for your message"):
+                    return raw.strip()
+        except Exception as exc:
+            logger.warning("LLM natural response failed: %s — using fallback", exc)
+
+        if is_checkin_reply:
+            return self._fallback_checkin_acknowledgement(diary, patient_text)
+        return self._fallback_normal_response(diary)
+
+    def _fallback_checkin_acknowledgement(
         self, diary: PatientDiary, patient_text: str
     ) -> str:
-        """Generate a friendly acknowledgement after a patient answers a check-in."""
+        """Deterministic fallback acknowledgement after a patient answers a check-in."""
         patient_name = diary.intake.name or "there"
         appt_date = diary.monitoring.appointment_date or "your upcoming appointment"
 
@@ -1795,8 +2151,8 @@ class MonitoringAgent(BaseAgent):
             f"hesitate to message us."
         )
 
-    def _generate_normal_response(self, diary: PatientDiary) -> str:
-        """Generate a risk-aware response for normal messages."""
+    def _fallback_normal_response(self, diary: PatientDiary) -> str:
+        """Deterministic fallback risk-aware response for normal messages."""
         risk = diary.header.risk_level
         appt_date = diary.monitoring.appointment_date or "your upcoming appointment"
 
@@ -1821,10 +2177,10 @@ class MonitoringAgent(BaseAgent):
             f"and we'll escalate to our clinical team."
         )
 
-    def _generate_milestone_message(
+    def _fallback_milestone_message(
         self, days: int, diary: PatientDiary
     ) -> str:
-        """Generate a contextual milestone check-in message."""
+        """Deterministic fallback contextual milestone check-in message."""
         patient_name = diary.intake.name or "there"
         appt_date = diary.monitoring.appointment_date or "your upcoming appointment"
         condition = diary.clinical.condition_context or ""
@@ -1929,3 +2285,113 @@ class MonitoringAgent(BaseAgent):
             "deteriorating": deteriorating,
             "total_compared": len(changes),
         }
+
+    # Absolute lab value thresholds — mirrors RiskScorer HARD_RULES
+    # (param, operator, threshold, description)
+    ABSOLUTE_LAB_THRESHOLDS: list[tuple[str, str, float, str]] = [
+        ("bilirubin", ">", 5.0, "Bilirubin > 5 mg/dL"),
+        ("total_bilirubin", ">", 5.0, "Total bilirubin > 5 mg/dL"),
+        ("ALT", ">", 500, "ALT > 500 U/L"),
+        ("alt", ">", 500, "ALT > 500 U/L"),
+        ("AST", ">", 500, "AST > 500 U/L"),
+        ("ast", ">", 500, "AST > 500 U/L"),
+        ("platelets", "<", 50, "Platelets < 50 x10^9/L"),
+        ("platelet_count", "<", 50, "Platelet count < 50 x10^9/L"),
+        ("INR", ">", 2.0, "INR > 2.0"),
+        ("inr", ">", 2.0, "INR > 2.0"),
+        ("creatinine", ">", 3.0, "Creatinine > 3.0 mg/dL"),
+        ("albumin", "<", 2.5, "Albumin < 2.5 g/dL"),
+    ]
+
+    def _check_absolute_thresholds(
+        self, new_values: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """
+        Check new lab values against absolute critical thresholds.
+
+        This is a safety net for when baseline is empty or doesn't have
+        matching parameters — critically abnormal values should ALWAYS
+        fire an alert regardless of baseline comparison.
+        """
+        alerts: list[dict[str, Any]] = []
+
+        for param, operator, threshold, description in self.ABSOLUTE_LAB_THRESHOLDS:
+            raw_val = new_values.get(param)
+            if raw_val is None:
+                continue
+
+            try:
+                num_val = float(raw_val)
+            except (ValueError, TypeError):
+                continue
+
+            triggered = False
+            if operator == ">" and num_val > threshold:
+                triggered = True
+            elif operator == "<" and num_val < threshold:
+                triggered = True
+
+            if triggered:
+                alerts.append({
+                    "param": param,
+                    "baseline": None,
+                    "new": num_val,
+                    "change_pct": None,
+                    "status": "deteriorating",
+                    "reason": f"Absolute threshold exceeded: {description}",
+                })
+                logger.warning(
+                    "Absolute lab threshold triggered: %s=%.1f (%s)",
+                    param, num_val, description,
+                )
+
+        return alerts
+
+    @staticmethod
+    def _extract_lab_values_from_text(text: str) -> dict[str, float]:
+        """Extract lab parameter names and numeric values from free-text.
+
+        Handles patterns like:
+          - "bilirubin 8", "ALT 600", "bilirubin is 8.0"
+          - "bilirubin 8 and ALT 600"
+          - "my bilirubin was 8"
+        """
+        import re
+
+        # Map of common lab name variants → canonical parameter name
+        lab_aliases: dict[str, str] = {
+            "bilirubin": "bilirubin",
+            "bili": "bilirubin",
+            "alt": "ALT",
+            "alanine transaminase": "ALT",
+            "ast": "AST",
+            "aspartate transaminase": "AST",
+            "albumin": "albumin",
+            "inr": "INR",
+            "platelets": "platelets",
+            "plt": "platelets",
+            "creatinine": "creatinine",
+            "sodium": "sodium",
+            "potassium": "potassium",
+            "haemoglobin": "haemoglobin",
+            "hemoglobin": "haemoglobin",
+            "hb": "haemoglobin",
+            "wbc": "WBC",
+            "white blood cell": "WBC",
+            "crp": "CRP",
+        }
+
+        results: dict[str, float] = {}
+        text_lower = text.lower()
+
+        for alias, canonical in lab_aliases.items():
+            # Match: alias (optional "is"/"was"/"of"/"="/":") number
+            pattern = rf'\b{re.escape(alias)}\b[\s:=]*(?:is|was|of|at)?\s*(\d+(?:\.\d+)?)'
+            match = re.search(pattern, text_lower)
+            if match:
+                try:
+                    results[canonical] = float(match.group(1))
+                except ValueError:
+                    continue
+
+        return results

@@ -44,6 +44,13 @@ class EventType(str, Enum):
     HELPER_REGISTRATION = "HELPER_REGISTRATION"
     HELPER_VERIFIED = "HELPER_VERIFIED"
 
+    # Cross-phase content routing
+    CROSS_PHASE_DATA = "CROSS_PHASE_DATA"
+    CROSS_PHASE_REPROMPT = "CROSS_PHASE_REPROMPT"
+
+    # Form-based intake
+    INTAKE_FORM_SUBMITTED = "INTAKE_FORM_SUBMITTED"
+
     # System events
     HEARTBEAT = "HEARTBEAT"
     AGENT_ERROR = "AGENT_ERROR"
@@ -75,6 +82,9 @@ EXPLICIT_ROUTE_EVENTS = {
     EventType.HELPER_REGISTRATION,
     EventType.HELPER_VERIFIED,
     EventType.AGENT_ERROR,
+    EventType.CROSS_PHASE_DATA,
+    EventType.CROSS_PHASE_REPROMPT,
+    EventType.INTAKE_FORM_SUBMITTED,
 }
 
 # Events that the Gateway routes via Strategy B (diary phase lookup)

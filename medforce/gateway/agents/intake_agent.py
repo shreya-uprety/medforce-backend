@@ -1,22 +1,23 @@
 """
-Intake Agent — The Receptionist.
+Intake Agent — The Receptionist (Referral-First).
 
-Collects patient demographics through an adaptive conversation loop.
-Never asks clinical questions (symptoms, medications — that's Clinical's job).
+Since patients are GP-referred, the referral letter PDF (pre-uploaded to GCS)
+contains most demographic and clinical information.  The intake agent:
 
-Flow (adaptive, not scripted):
-  1. Identify responder → patient or helper?
-  2. If referral letter exists → cross-reference to pre-fill known fields
-  3. Collect missing demographics one at a time (LLM-powered extraction)
-  4. Collect preferred contact method (email, SMS, phone, websocket)
-  5. Confirm all data → emit INTAKE_COMPLETE
+  1. Fetches the referral PDF from GCS
+  2. Extracts demographics + clinical data in a single Gemini multimodal call
+  3. Caches everything into the diary
+  4. Sends a personalized hello
+  5. Asks only responder type + contact preference
+  6. Hands off to Clinical
+
+Fallback: if no PDF is found, reverts to the legacy conversational flow.
 
 Handles:
-  - USER_MESSAGE in intake phase: extract data, ask for next missing field
-  - NEEDS_INTAKE_DATA: backward loop from Clinical requesting specific fields
-  - INTAKE_COMPLETE emission when all required fields are collected
-
-Uses Gemini Flash for natural-language extraction and question generation.
+  - USER_MESSAGE in intake phase
+  - NEEDS_INTAKE_DATA: backward loop from Clinical
+  - INTAKE_FORM_SUBMITTED: form submission
+  - CROSS_PHASE_DATA: cross-phase intake data
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from typing import Any
 
@@ -54,7 +56,7 @@ FIELD_LABELS: dict[str, str] = {
     "contact_preference": "preferred method of contact",
 }
 
-# Extraction prompt template
+# Extraction prompt template (legacy conversational fallback)
 EXTRACTION_PROMPT = """\
 You are a medical receptionist AI at a UK clinic. Extract patient demographic \
 information from the following message. Return a JSON object with only the \
@@ -73,7 +75,7 @@ Message: "{message}"
 Return ONLY valid JSON, no markdown, no explanation.\
 """
 
-# Question generation prompt
+# Question generation prompt (legacy conversational fallback)
 QUESTION_PROMPT = """\
 You are a friendly medical receptionist at a UK clinic. Ask the patient for \
 their {field} in a warm, professional manner. Keep it to one sentence. \
@@ -83,41 +85,60 @@ IMPORTANT: The following fields have ALREADY been collected — do NOT ask for \
 any of them again: {already_collected}. Only ask for: {field}.\
 """
 
-# Referral cross-reference prompt
+# ── Referral PDF extraction prompt (multimodal — sent with PDF bytes) ──
 REFERRAL_ANALYSIS_PROMPT = """\
-You are a medical receptionist AI. A referral letter has been provided. \
-Extract any patient demographic information you can find.
+You are a medical receptionist AI at a UK clinic. A GP referral letter PDF \
+is attached. Extract ALL patient demographic AND clinical information into \
+a single FLAT JSON object. Do NOT nest fields under section headers.
 
-Return a JSON object with these possible fields:
-- name: patient's full name
-- dob: date of birth (normalise to DD/MM/YYYY)
-- nhs_number: NHS number (10 digits)
-- address: home address
-- phone: phone number
-- gp_name: referring GP's name
-- gp_practice: GP practice name
-- chief_complaint: main reason for referral (brief)
-- medical_history: list of conditions mentioned
-- current_medications: list of medications mentioned
+Return exactly this structure (omit any field you cannot confidently extract):
 
-Only include fields you can confidently extract.
-Return ONLY valid JSON, no markdown.\
+{
+  "name": "patient full name",
+  "dob": "DD/MM/YYYY",
+  "nhs_number": "10 digits no spaces",
+  "phone": "patient phone number",
+  "address": "patient home address",
+  "email": "patient email",
+  "gp_name": "referring GP full name e.g. Dr Sarah Patel",
+  "gp_practice": "GP practice or surgery name",
+  "next_of_kin": "next of kin name and contact if mentioned",
+  "chief_complaint": "main reason for referral, brief",
+  "condition_context": "identified or suspected condition e.g. cirrhosis, MASH, hepatitis B",
+  "medical_history": ["condition1", "condition2"],
+  "current_medications": ["med1 with dose", "med2 with dose"],
+  "allergies": ["allergy1", "allergy2"],
+  "red_flags": ["concerning symptom or finding"],
+  "symptoms": ["symptom1", "symptom2"],
+  "lab_values": {"parameter": "value with unit"},
+  "key_findings": "brief summary of key clinical findings",
+  "clinical_narrative": "A 200-300 word clinical summary written as a triage nurse would read it aloud. Include: the specific diagnosis/condition with subtype if known (e.g. genotype, stage), all investigation results with exact values and units, relevant social history with context (substance use timeline, alcohol quantities, smoking), reason for referral and what is requested (e.g. FibroScan, DAA therapy, surveillance), current symptom status, and any care gaps (e.g. incomplete vaccinations, pending investigations). Write in flowing prose, not bullet points."
+}
+
+Rules:
+- Return a FLAT JSON object, NOT nested under section names.
+- For allergies: use ["NKDA"] if the letter states no known allergies.
+- For NHS numbers: 10 digits, no spaces.
+- For DOB: normalise to DD/MM/YYYY.
+- Return ONLY valid JSON. No markdown fences. No explanation.\
 """
 
 
 class IntakeAgent(BaseAgent):
     """
-    Collects patient demographics through adaptive conversation.
+    Collects patient demographics via referral-first extraction.
 
-    The agent operates in a loop: extract → evaluate → ask next.
-    It adapts based on what information is already available (e.g. from
-    referral letters) rather than following a fixed script.
+    New flow: PDF extraction → personalized hello → responder type →
+    contact preference → complete.
+
+    Fallback: if no referral PDF in GCS, uses legacy conversational intake.
     """
 
     agent_name = "intake"
 
-    def __init__(self, llm_client=None) -> None:
+    def __init__(self, llm_client=None, gcs_bucket_manager=None) -> None:
         self._client = llm_client
+        self._gcs = gcs_bucket_manager
         self._model_name = os.getenv("INTAKE_MODEL", "gemini-2.0-flash")
 
     @property
@@ -138,6 +159,12 @@ class IntakeAgent(BaseAgent):
         if event.event_type == EventType.NEEDS_INTAKE_DATA:
             return await self._handle_backward_loop(event, diary)
 
+        if event.event_type == EventType.INTAKE_FORM_SUBMITTED:
+            return await self._handle_form_submission(event, diary)
+
+        if event.event_type == EventType.CROSS_PHASE_DATA:
+            return await self._handle_cross_phase_data(event, diary)
+
         if event.event_type == EventType.USER_MESSAGE:
             return await self._handle_user_message(event, diary)
 
@@ -146,21 +173,454 @@ class IntakeAgent(BaseAgent):
         )
         return AgentResult(updated_diary=diary)
 
-    # ── Handlers ──
+    # ══════════════════════════════════════════════════════════════
+    #  Referral PDF extraction pipeline
+    # ══════════════════════════════════════════════════════════════
+
+    def _fetch_referral_pdf(self, patient_id: str) -> bytes | None:
+        """Download referral PDF bytes from GCS."""
+        if self._gcs is None:
+            logger.warning("No GCS bucket manager — cannot fetch referral PDF")
+            return None
+
+        blob_path = f"patient_data/{patient_id}/raw_data/referral_letter.pdf"
+        try:
+            pdf_bytes = self._gcs.read_file_as_bytes(blob_path)
+            if pdf_bytes:
+                logger.info(
+                    "Fetched referral PDF for patient %s (%d bytes)",
+                    patient_id, len(pdf_bytes),
+                )
+            else:
+                logger.info("No referral PDF found for patient %s", patient_id)
+            return pdf_bytes
+        except Exception as exc:
+            logger.warning("Failed to fetch referral PDF for %s: %s", patient_id, exc)
+            return None
+
+    async def _extract_from_referral(self, pdf_bytes: bytes) -> dict[str, Any]:
+        """Send PDF to Gemini multimodal and extract structured data."""
+        try:
+            if self.client is None:
+                return {}
+
+            from google.genai import types as genai_types
+
+            pdf_part = genai_types.Part.from_bytes(
+                data=pdf_bytes, mime_type="application/pdf"
+            )
+
+            t_start = time.monotonic()
+            response = await self.client.aio.models.generate_content(
+                model=self._model_name,
+                contents=[pdf_part, REFERRAL_ANALYSIS_PROMPT],
+            )
+            elapsed = time.monotonic() - t_start
+            logger.info("  [timing] Referral PDF extraction: %.2fs", elapsed)
+
+            raw = response.text
+            if not raw or not raw.strip():
+                logger.warning("Gemini returned empty response for referral extraction")
+                return {}
+
+            raw = raw.strip()
+            # Strip markdown fences if present
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[-1]
+                if raw.endswith("```"):
+                    raw = raw[:-3]
+                raw = raw.strip()
+
+            extracted = json.loads(raw)
+
+            # Safety: if LLM returned nested structure (e.g. {"DEMOGRAPHIC FIELDS": {...}, ...})
+            # flatten it by merging all dict-valued top-level keys
+            expected_keys = {
+                "name", "dob", "nhs_number", "phone", "address", "email",
+                "gp_name", "gp_practice", "next_of_kin", "chief_complaint",
+                "condition_context", "medical_history", "current_medications",
+                "allergies", "red_flags", "symptoms", "lab_values", "key_findings",
+            }
+            if not any(k in expected_keys for k in extracted):
+                # None of the expected keys found — likely nested
+                flattened = {}
+                for v in extracted.values():
+                    if isinstance(v, dict):
+                        flattened.update(v)
+                if any(k in expected_keys for k in flattened):
+                    logger.info("Flattened nested LLM response into %d fields", len(flattened))
+                    extracted = flattened
+
+            logger.info(
+                "Referral extraction got %d fields: %s",
+                len(extracted), list(extracted.keys()),
+            )
+            return extracted
+
+        except Exception as exc:
+            logger.error("Referral PDF extraction failed: %s", exc)
+            return {}
+
+    def _cache_referral_data(
+        self, diary: PatientDiary, extracted: dict[str, Any], patient_id: str
+    ) -> None:
+        """Populate diary.intake + diary.clinical from extracted referral data."""
+
+        # ── Demographic fields → diary.intake ──
+        demographic_fields = [
+            "name", "dob", "nhs_number", "phone", "address",
+            "email", "gp_name", "gp_practice", "next_of_kin",
+        ]
+        for field in demographic_fields:
+            value = extracted.get(field)
+            if value and str(value).strip():
+                diary.intake.mark_field_collected(field, str(value).strip())
+                logger.info(
+                    "Referral → intake.%s = '%s' for %s",
+                    field, str(value)[:50], patient_id,
+                )
+
+        # Set referral letter reference
+        diary.intake.referral_letter_ref = (
+            f"patient_data/{patient_id}/raw_data/referral_letter.pdf"
+        )
+
+        # ── Clinical fields → diary.clinical ──
+        if extracted.get("chief_complaint"):
+            diary.clinical.chief_complaint = extracted["chief_complaint"]
+
+        if extracted.get("condition_context"):
+            diary.clinical.condition_context = extracted["condition_context"]
+
+        if extracted.get("medical_history"):
+            for item in extracted["medical_history"]:
+                if item and item not in diary.clinical.medical_history:
+                    diary.clinical.medical_history.append(item)
+
+        if extracted.get("current_medications"):
+            for med in extracted["current_medications"]:
+                if med and med not in diary.clinical.current_medications:
+                    diary.clinical.current_medications.append(med)
+
+        if extracted.get("allergies"):
+            for allergy in extracted["allergies"]:
+                if allergy and allergy not in diary.clinical.allergies:
+                    diary.clinical.allergies.append(allergy)
+
+        if extracted.get("red_flags"):
+            for flag in extracted["red_flags"]:
+                if flag and flag not in diary.clinical.red_flags:
+                    diary.clinical.red_flags.append(flag)
+
+        # Store clinical narrative for richer question generation
+        if extracted.get("clinical_narrative"):
+            diary.clinical.referral_narrative = extracted["clinical_narrative"]
+
+        # Store full extraction as referral_analysis for clinical agent
+        diary.clinical.referral_analysis = extracted
+
+        # Lab values into referral_analysis (already there via above)
+        # Symptoms into red_flags if not already captured
+        if extracted.get("symptoms"):
+            for symptom in extracted["symptoms"]:
+                if symptom and symptom not in diary.clinical.red_flags:
+                    # Don't pollute red_flags with general symptoms
+                    pass  # symptoms are already in referral_analysis
+
+        logger.info(
+            "Cached referral data for %s: intake fields=%s, chief_complaint=%s",
+            patient_id,
+            [f for f in demographic_fields if extracted.get(f)],
+            extracted.get("chief_complaint", "none"),
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    #  Main handler — referral-first state machine
+    # ══════════════════════════════════════════════════════════════
 
     async def _handle_user_message(
         self, event: EventEnvelope, diary: PatientDiary
     ) -> AgentResult:
         """
-        Adaptive conversation loop:
-          1. If no responder identified → ask patient/helper
-          2. Extract fields from message
-          3. Cross-reference referral if available and not yet done
-          4. Evaluate what's still missing → ask or complete
+        Referral-first state machine:
+
+        State 1 — No referral extracted yet:
+            fetch PDF → extract → cache → send personalized hello → wait
+
+        State 2 — Hello sent, awaiting green flag:
+            detect affirmative → ask responder type
+
+        State 3 — Green flag acknowledged, awaiting responder type:
+            detect patient/helper → record → ask contact preference
+
+        State 4 — Awaiting contact preference:
+            detect preference → complete intake
+
+        Fallback: if no PDF found, use legacy conversational intake.
+
+        State tracking via diary fields:
+          - referral_letter_ref not set           → State 1
+          - referral_letter_ref set, no hello_ack → State 2 (green flag)
+          - hello_acknowledged, responder is None → State 3 (responder type)
+          - responder set, contact_pref is None   → State 4 (contact pref)
         """
         text = event.payload.get("text", "")
         channel = event.payload.get("channel", "websocket")
+        patient_id = event.patient_id
 
+        # ── State 1: No referral extracted yet ──
+        if not diary.intake.referral_letter_ref:
+            return await self._state_extract_and_hello(event, diary, text, channel, patient_id)
+
+        hello_acknowledged = "hello_acknowledged" in diary.intake.fields_collected
+
+        # ── State 2: Hello sent, awaiting green flag ──
+        if not hello_acknowledged:
+            return await self._state_await_green_flag(event, diary, text, channel)
+
+        # ── State 3: Green flag received, awaiting responder type ──
+        if diary.intake.responder_type is None:
+            return await self._state_await_responder_type(event, diary, text, channel)
+
+        # ── State 4: Awaiting contact preference ──
+        if diary.intake.contact_preference is None:
+            return await self._state_await_contact_preference(event, diary, text, channel)
+
+        # ── All done — shouldn't normally reach here ──
+        missing = diary.intake.get_missing_required()
+        if not missing:
+            return await self._complete_intake(event, diary, channel)
+
+        # Edge case: required fields still missing after referral (fallback to conversational)
+        return await self._handle_user_message_legacy(event, diary, text, channel)
+
+    async def _state_extract_and_hello(
+        self,
+        event: EventEnvelope,
+        diary: PatientDiary,
+        text: str,
+        channel: str,
+        patient_id: str,
+    ) -> AgentResult:
+        """State 1: Fetch PDF, extract, cache, send personalized hello."""
+
+        # Try to fetch and extract from referral PDF
+        pdf_bytes = self._fetch_referral_pdf(patient_id)
+
+        if pdf_bytes is None:
+            # No referral PDF — fall back to legacy conversational intake
+            logger.info("No referral PDF for %s — using legacy conversational intake", patient_id)
+            return await self._handle_user_message_legacy(event, diary, text, channel)
+
+        # Extract data from PDF
+        extracted = await self._extract_from_referral(pdf_bytes)
+
+        if not extracted:
+            # Extraction failed — fall back to legacy
+            logger.warning("Referral extraction returned empty for %s — fallback", patient_id)
+            return await self._handle_user_message_legacy(event, diary, text, channel)
+
+        # Cache all extracted data into diary
+        self._cache_referral_data(diary, extracted, patient_id)
+
+        # Build personalized hello
+        full_name = diary.intake.name or ""
+        parts = full_name.split() if full_name.strip() else []
+        # Strip existing title (Mr, Mrs, Ms, Miss, Dr, Prof, etc.)
+        titles = {"mr", "mrs", "ms", "miss", "dr", "prof", "mr.", "mrs.", "ms.", "miss.", "dr.", "prof."}
+        while parts and parts[0].lower().rstrip(".") in {t.rstrip(".") for t in titles}:
+            parts.pop(0)
+        first_name = parts[0] if parts else ""
+        name_greeting = f"Mr. {first_name}" if first_name else "there"
+
+        gp_name = diary.intake.gp_name or "your GP"
+        # Ensure GP name has "Dr." prefix
+        if gp_name != "your GP" and not gp_name.lower().startswith("dr"):
+            gp_name = f"Dr. {gp_name}"
+
+        # Use specialty/department for the referral description, not the full condition
+        referral_desc = "referral"
+        chief = diary.clinical.chief_complaint or ""
+        condition = diary.clinical.condition_context or ""
+        # Try to derive a short specialty from condition_context or chief_complaint
+        _text = f"{condition} {chief}".lower()
+        specialty_map = {
+            "hepatology": ["hepato", "liver", "cirrhosis", "mash", "nafld", "nash",
+                           "hepatitis", "hepatocellular", "jaundice", "bilirubin"],
+            "gastroenterology": ["gastro", "ibs", "crohn", "colitis", "bowel",
+                                 "stomach", "reflux", "gerd"],
+            "cardiology": ["cardiac", "heart", "cardio", "chest pain", "arrhythmia",
+                           "hypertension"],
+            "neurology": ["neuro", "migraine", "seizure", "epilepsy", "stroke"],
+            "respiratory": ["lung", "asthma", "copd", "respiratory", "pulmonary",
+                            "breathless"],
+            "endocrinology": ["diabetes", "thyroid", "endocrin", "hormonal"],
+            "rheumatology": ["arthritis", "rheumat", "lupus", "joint"],
+            "oncology": ["cancer", "carcinoma", "tumour", "tumor", "oncol",
+                         "malignant", "neoplasm"],
+            "urology": ["kidney", "renal", "urolog", "bladder", "prostate"],
+            "dermatology": ["skin", "dermat", "eczema", "psoriasis"],
+        }
+        for specialty, keywords in specialty_map.items():
+            if any(kw in _text for kw in keywords):
+                referral_desc = f"{specialty} referral"
+                break
+
+        hello = (
+            f"Hi {name_greeting} \U0001f44b This is Alice (your virtual assistant) from "
+            f"MedForce Clinic London.\n"
+            f"We just received your {referral_desc} from {gp_name}. "
+            f"To get your appointment scheduled, I'll need to ask a few quick "
+            f"questions about your basic details and medical history in this chat.\n\n"
+            f"Let me know when you have a minute, and we can get started!"
+        )
+
+        response = AgentResponse(
+            recipient="patient",
+            channel=channel,
+            message=hello,
+            metadata={"patient_id": event.patient_id},
+        )
+        return AgentResult(updated_diary=diary, responses=[response])
+
+    async def _state_await_green_flag(
+        self,
+        event: EventEnvelope,
+        diary: PatientDiary,
+        text: str,
+        channel: str,
+    ) -> AgentResult:
+        """State 2: Awaiting patient green flag → mark acknowledged, ask responder type."""
+        text_lower = text.lower().strip()
+
+        # Green-flag detection (affirmative response)
+        green_flags = [
+            "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "go ahead",
+            "ready", "let's go", "lets go", "go on", "start", "begin",
+            "alright", "fine", "cool", "sounds good", "of course", "absolutely",
+            "i'm ready", "im ready", "go for it", "fire away", "shoot",
+            "i have a minute", "i'm free", "right now", "now is good",
+            "hi", "hello", "hey",
+        ]
+        is_green = any(gf in text_lower for gf in green_flags)
+
+        if not is_green:
+            # Not clearly affirmative — gently re-prompt
+            response = AgentResponse(
+                recipient="patient",
+                channel=channel,
+                message="No worries — just let me know when you're ready and we'll get started!",
+                metadata={"patient_id": event.patient_id},
+            )
+            return AgentResult(updated_diary=diary, responses=[response])
+
+        # Green flag received — mark acknowledged and ask responder type
+        if "hello_acknowledged" not in diary.intake.fields_collected:
+            diary.intake.fields_collected.append("hello_acknowledged")
+
+        ask_responder = AgentResponse(
+            recipient="patient",
+            channel=channel,
+            message="Are you the patient, or are you helping someone with their registration?",
+            metadata={"patient_id": event.patient_id},
+        )
+        return AgentResult(updated_diary=diary, responses=[ask_responder])
+
+    async def _state_await_responder_type(
+        self,
+        event: EventEnvelope,
+        diary: PatientDiary,
+        text: str,
+        channel: str,
+    ) -> AgentResult:
+        """State 3: Detect responder type → record → ask contact preference."""
+        responder = self._detect_responder_type_from_text(text)
+
+        if responder:
+            diary.intake.responder_type = responder
+            logger.info("Responder type = '%s' for %s", responder, event.patient_id)
+
+            if responder == "helper":
+                # Try to extract helper details from same message
+                helper_info = self._detect_responder(text)
+                if helper_info:
+                    diary.intake.responder_name = helper_info.get("name")
+                    diary.intake.responder_relationship = helper_info.get("relationship")
+
+            # Ask contact preference
+            ask_pref = AgentResponse(
+                recipient="patient",
+                channel=channel,
+                message=(
+                    "How would you prefer us to keep in touch? "
+                    "We can contact you via email, text message, phone call, "
+                    "or continue through this chat."
+                ),
+                metadata={"patient_id": event.patient_id},
+            )
+            return AgentResult(updated_diary=diary, responses=[ask_pref])
+        else:
+            # Couldn't detect — re-ask
+            response = AgentResponse(
+                recipient="patient",
+                channel=channel,
+                message=(
+                    "Sorry, I didn't quite catch that. "
+                    "Are you the patient, or are you helping someone with their registration?"
+                ),
+                metadata={"patient_id": event.patient_id},
+            )
+            return AgentResult(updated_diary=diary, responses=[response])
+
+    async def _state_await_contact_preference(
+        self,
+        event: EventEnvelope,
+        diary: PatientDiary,
+        text: str,
+        channel: str,
+    ) -> AgentResult:
+        """State 4: Detect contact preference → complete intake."""
+        text_lower = text.lower().strip()
+
+        pref = self._detect_contact_preference(text_lower)
+        if pref:
+            diary.intake.mark_field_collected("contact_preference", pref)
+            logger.info("Contact preference = '%s' for %s", pref, event.patient_id)
+
+            # Check if all required fields are satisfied
+            missing = diary.intake.get_missing_required()
+            if not missing:
+                return await self._complete_intake(event, diary, channel)
+            else:
+                # Still missing some required fields — fall back to conversational
+                return await self._handle_user_message_legacy(event, diary, text, channel)
+        else:
+            # Didn't detect preference — re-ask
+            response = AgentResponse(
+                recipient="patient",
+                channel=channel,
+                message=(
+                    "How would you prefer us to keep in touch? "
+                    "We can contact you via email, text message (SMS), phone call, "
+                    "or continue through this chat."
+                ),
+                metadata={"patient_id": event.patient_id},
+            )
+            return AgentResult(updated_diary=diary, responses=[response])
+
+    # ══════════════════════════════════════════════════════════════
+    #  Legacy conversational intake (fallback when no referral PDF)
+    # ══════════════════════════════════════════════════════════════
+
+    async def _handle_user_message_legacy(
+        self, event: EventEnvelope, diary: PatientDiary, text: str, channel: str
+    ) -> AgentResult:
+        """
+        Legacy adaptive conversation loop (used when no referral PDF exists):
+          1. If no responder identified → ask patient/helper
+          2. Extract fields from message
+          3. Evaluate what's still missing → ask or complete
+        """
         # ── Step 1: Responder identification (first interaction) ──
         if diary.intake.responder_type is None:
             responder = self._detect_responder(text)
@@ -169,20 +629,58 @@ class IntakeAgent(BaseAgent):
                 if responder["type"] == "helper":
                     diary.intake.responder_name = responder.get("name")
                     diary.intake.responder_relationship = responder.get("relationship")
-                # Continue to extract any demographic data from the same message
-            else:
-                # First message and unclear — ask directly
+
+                # Opportunistically extract fields from the first message
+                missing = diary.intake.fields_missing
+                if missing and text:
+                    first_extracted = self._fallback_extraction(text, missing)
+                    for field, value in first_extracted.items():
+                        if hasattr(diary.intake, field) and value:
+                            diary.intake.mark_field_collected(field, str(value))
+
+                # After detecting responder, prompt for form
+                if responder["type"] == "helper":
+                    greeting = (
+                        "Thank you for helping with the registration. "
+                        "I'll now show you a form to fill in the patient's details. "
+                        "[SHOW_INTAKE_FORM]"
+                    )
+                else:
+                    greeting = (
+                        "Welcome! Thank you for confirming. "
+                        "I'll now show you a form to fill in your details. "
+                        "[SHOW_INTAKE_FORM]"
+                    )
                 response = AgentResponse(
                     recipient="patient",
                     channel=channel,
-                    message=(
-                        "Welcome to MedForce. Before we begin, are you the patient, "
-                        "or are you helping someone with their registration? "
-                        "Please let us know so we can assist you properly."
-                    ),
+                    message=greeting,
                     metadata={"patient_id": event.patient_id},
                 )
                 return AgentResult(updated_diary=diary, responses=[response])
+            else:
+                # First message — send welcome + patient/helper question as two messages
+                welcome = AgentResponse(
+                    recipient="patient",
+                    channel=channel,
+                    message=(
+                        "Welcome to The London Clinic. I'm your pre-consultation "
+                        "assistant and I'll be helping you prepare for your upcoming "
+                        "appointment. I'll collect some details, ask a few clinical "
+                        "questions, and then help you book your consultation."
+                    ),
+                    metadata={"patient_id": event.patient_id},
+                )
+                ask_role = AgentResponse(
+                    recipient="patient",
+                    channel=channel,
+                    message=(
+                        "Before we begin, are you the patient, or are you helping "
+                        "someone with their registration?"
+                    ),
+                    metadata={"patient_id": event.patient_id},
+                )
+                return AgentResult(updated_diary=diary, responses=[welcome, ask_role])
 
         # ── Step 2: Extract fields + speculative question gen in parallel ──
         if text:
@@ -247,6 +745,10 @@ class IntakeAgent(BaseAgent):
 
         return AgentResult(updated_diary=diary, responses=[response])
 
+    # ══════════════════════════════════════════════════════════════
+    #  Backward loop & other handlers (unchanged)
+    # ══════════════════════════════════════════════════════════════
+
     async def _handle_backward_loop(
         self, event: EventEnvelope, diary: PatientDiary
     ) -> AgentResult:
@@ -298,14 +800,180 @@ class IntakeAgent(BaseAgent):
 
         return AgentResult(updated_diary=diary, responses=[response])
 
-    # ── Responder Identification ──
+    # ── Form Submission Handler ──
+
+    async def _handle_form_submission(
+        self, event: EventEnvelope, diary: PatientDiary
+    ) -> AgentResult:
+        """Handle INTAKE_FORM_SUBMITTED — all fields submitted at once via form."""
+        payload = event.payload
+        channel = payload.get("channel", "websocket")
+
+        # Set responder type from form
+        is_helper = payload.get("is_helper", False)
+        if is_helper:
+            diary.intake.responder_type = "helper"
+        elif diary.intake.responder_type is None:
+            diary.intake.responder_type = "patient"
+
+        # Field mapping: form field name → diary field name
+        field_map = {
+            "name": "name",
+            "dob": "dob",
+            "nhs_number": "nhs_number",
+            "phone": "phone",
+            "gp_name": "gp_name",
+            "contact_preference": "contact_preference",
+            "email": "email",
+            "address": "address",
+            "next_of_kin": "next_of_kin",
+            "gp_practice": "gp_practice",
+        }
+
+        # Validate and collect fields
+        validation_errors = []
+        for form_field, diary_field in field_map.items():
+            value = payload.get(form_field)
+            if value and str(value).strip():
+                value_str = str(value).strip()
+
+                # Basic validation
+                if diary_field == "nhs_number":
+                    clean = value_str.replace(" ", "")
+                    if not clean.isdigit() or len(clean) != 10:
+                        validation_errors.append(f"NHS number must be 10 digits (got: {value_str})")
+                        continue
+                    value_str = clean
+                elif diary_field == "phone":
+                    if not re.match(r'^(\+?44|0)7\d[\d\s\-]{8,}$', value_str.replace(" ", "")):
+                        # Relaxed validation — accept if it looks phone-like
+                        if not any(c.isdigit() for c in value_str):
+                            validation_errors.append(f"Phone number format not recognised: {value_str}")
+                            continue
+
+                diary.intake.mark_field_collected(diary_field, value_str)
+                logger.info(
+                    "Form field '%s' = '%s' for patient %s",
+                    diary_field, value_str[:50], event.patient_id,
+                )
+
+        # Check if required fields are satisfied
+        missing = diary.intake.get_missing_required()
+
+        if missing:
+            # Some required fields missing — ask via chat
+            missing_labels = [FIELD_LABELS.get(f, f) for f in missing]
+            msg = (
+                f"Thank you for filling in the form. However, we still need the following: "
+                f"{', '.join(missing_labels)}. Could you please provide these?"
+            )
+            if validation_errors:
+                msg += f"\n\nAlso: {'; '.join(validation_errors)}"
+            response = AgentResponse(
+                recipient="patient",
+                channel=channel,
+                message=msg,
+                metadata={"patient_id": event.patient_id},
+            )
+            return AgentResult(updated_diary=diary, responses=[response])
+
+        # All required fields present — complete intake
+        return await self._complete_intake(event, diary, channel)
+
+    # ── Cross-Phase Data Handler ──
+
+    async def _handle_cross_phase_data(
+        self, event: EventEnvelope, diary: PatientDiary
+    ) -> AgentResult:
+        """Handle cross-phase intake data detected by the Gateway."""
+        text = event.payload.get("text", "")
+        channel = event.payload.get("channel", "websocket")
+        from_phase = event.payload.get("from_phase", "unknown")
+
+        # Cross-phase: extract ALL recognizable intake fields, not just missing ones
+        all_intake_fields = [
+            "name", "dob", "nhs_number", "address", "phone", "email",
+            "next_of_kin", "gp_practice", "gp_name", "contact_preference",
+        ]
+        extracted = self._fallback_extraction(text, all_intake_fields)
+        # Also try LLM extraction if available
+        try:
+            if self.client is not None:
+                prompt = EXTRACTION_PROMPT.format(fields=", ".join(all_intake_fields), message=text)
+                raw_response = await llm_generate(self.client, self._model_name, prompt)
+                if raw_response:
+                    raw = raw_response.strip()
+                    if raw.startswith("```"):
+                        raw = raw.split("\n", 1)[-1]
+                        if raw.endswith("```"):
+                            raw = raw[:-3]
+                        raw = raw.strip()
+                    llm_extracted = json.loads(raw)
+                    llm_extracted = {k: v for k, v in llm_extracted.items() if k in all_intake_fields and v}
+                    extracted = {**extracted, **llm_extracted}
+        except Exception as exc:
+            logger.warning("Cross-phase LLM extraction failed: %s", exc)
+        if not extracted:
+            return AgentResult(updated_diary=diary)
+
+        # Apply to diary
+        for field, value in extracted.items():
+            if hasattr(diary.intake, field) and value:
+                diary.intake.mark_field_collected(field, str(value))
+                logger.info(
+                    "Cross-phase intake field '%s' = '%s' for patient %s",
+                    field, str(value)[:50], event.patient_id,
+                )
+
+        # Build audit trail entry
+        from datetime import datetime, timezone
+        diary.cross_phase_extractions.append({
+            "from_phase": from_phase,
+            "to_agent": "intake",
+            "text_snippet": text[:100],
+            "extracted_fields": list(extracted.keys()),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Build acknowledgment
+        field_labels = [FIELD_LABELS.get(f, f) for f in extracted.keys()]
+        ack_msg = f"I've updated your {', '.join(field_labels)} on file."
+
+        response = AgentResponse(
+            recipient="patient",
+            channel=channel,
+            message=ack_msg,
+            metadata={"patient_id": event.patient_id, "cross_phase": True},
+        )
+
+        logger.info(
+            "Cross-phase intake extraction from %s for patient %s: %s",
+            from_phase, event.patient_id, list(extracted.keys()),
+        )
+
+        # Emit CROSS_PHASE_REPROMPT to return control to the pending phase
+        reprompt = EventEnvelope.handoff(
+            event_type=EventType.CROSS_PHASE_REPROMPT,
+            patient_id=event.patient_id,
+            source_agent="intake",
+            payload={"_pending_phase": from_phase, "channel": channel},
+            correlation_id=event.correlation_id,
+        )
+
+        # DO NOT change the phase
+        return AgentResult(
+            updated_diary=diary, responses=[response], emitted_events=[reprompt],
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    #  Detection helpers
+    # ══════════════════════════════════════════════════════════════
 
     def _detect_responder(self, text: str) -> dict[str, str] | None:
         """Detect whether the sender is the patient or a helper."""
         text_lower = text.lower().strip()
 
         # Helper indicators — checked FIRST because they are more specific
-        # (e.g. "I'm calling on behalf of my mother" contains "i'm" but is a helper)
         helper_keywords = [
             "on behalf", "for my", "calling for",
             "my husband", "my wife", "my mother", "my father",
@@ -314,7 +982,6 @@ class IntakeAgent(BaseAgent):
         ]
         for kw in helper_keywords:
             if kw in text_lower:
-                # Try to extract relationship
                 relationship = ""
                 rel_map = {
                     "husband": "spouse", "wife": "spouse", "partner": "spouse",
@@ -337,8 +1004,7 @@ class IntakeAgent(BaseAgent):
             if kw in text_lower:
                 return {"type": "patient"}
 
-        # If the message looks like a name (2-5 words, no sentence indicators),
-        # assume they're the patient introducing themselves
+        # If the message looks like a name (2-5 words, no sentence indicators)
         words = text.strip().split()
         sentence_indicators = {
             "i", "the", "is", "am", "hi", "hello", "hey",
@@ -350,7 +1016,45 @@ class IntakeAgent(BaseAgent):
 
         return None
 
-    # ── Referral Cross-Reference ──
+    def _detect_contact_preference(self, text_lower: str) -> str | None:
+        """Detect contact preference from user message."""
+        pref_map = {
+            "email": ["email", "e-mail", "email me"],
+            "sms": ["sms", "text", "text me", "message me", "whatsapp"],
+            "phone": ["call", "phone", "ring", "call me", "telephone"],
+            "websocket": ["chat", "this", "here", "online", "web", "this chat"],
+        }
+        for pref, keywords in pref_map.items():
+            if any(kw in text_lower for kw in keywords):
+                return pref
+        return None
+
+    def _detect_responder_type_from_text(self, text: str) -> str | None:
+        """Detect responder type from free text answer."""
+        text_lower = text.lower().strip()
+
+        # Helper indicators
+        helper_keywords = [
+            "helping", "helper", "on behalf", "for my", "carer",
+            "family", "relative", "spouse", "husband", "wife",
+            "mother", "father", "mum", "dad", "son", "daughter", "partner",
+        ]
+        for kw in helper_keywords:
+            if kw in text_lower:
+                return "helper"
+
+        # Patient indicators
+        patient_keywords = [
+            "i am the patient", "i'm the patient", "the patient",
+            "it's me", "myself", "me", "i am", "patient",
+        ]
+        for kw in patient_keywords:
+            if kw in text_lower:
+                return "patient"
+
+        return None
+
+    # ── Referral Cross-Reference (legacy) ──
 
     async def _cross_reference_referral(self, diary: PatientDiary) -> None:
         """Analyze referral letter and pre-fill available fields."""
@@ -358,11 +1062,8 @@ class IntakeAgent(BaseAgent):
             if self.client is None:
                 return
 
-            # In production, we'd fetch the referral content from storage.
-            # For now, mark as analysed and extract what we can from context.
             referral_ref = diary.intake.referral_letter_ref
 
-            # If GP name came from referral, auto-fill
             if diary.intake.gp_name and "gp_name" not in diary.intake.fields_collected:
                 diary.intake.mark_field_collected("gp_name", diary.intake.gp_name)
 
@@ -375,20 +1076,9 @@ class IntakeAgent(BaseAgent):
     # ── Adaptive Field Selection ──
 
     def _select_next_field(self, missing: list[str], diary: PatientDiary) -> str:
-        """
-        Adaptively select which field to ask for next based on context.
-
-        Priority order:
-          1. contact_preference (if not collected — we need to know how to reach them)
-          2. name (need to address them)
-          3. dob (clinical priority)
-          4. nhs_number (lookup priority)
-          5. phone (contact backup)
-          6. gp_name (for clinical handoff)
-          7. everything else
-        """
+        """Adaptively select which field to ask for next based on context."""
         priority = [
-            "contact_preference", "name", "dob", "nhs_number",
+            "name", "contact_preference", "dob", "nhs_number",
             "phone", "gp_name", "address", "email",
             "next_of_kin", "gp_practice",
         ]
@@ -460,7 +1150,9 @@ class IntakeAgent(BaseAgent):
             responses=[response],
         )
 
-    # ── LLM Integration ──
+    # ══════════════════════════════════════════════════════════════
+    #  LLM Integration (legacy conversational intake)
+    # ══════════════════════════════════════════════════════════════
 
     async def _extract_fields(
         self, text: str, diary: PatientDiary
@@ -468,7 +1160,6 @@ class IntakeAgent(BaseAgent):
         """Use LLM to extract demographic fields from free text."""
         missing = diary.intake.fields_missing
         if not missing:
-            # Also check required fields not yet collected
             missing = diary.intake.get_missing_required()
             if not missing:
                 return {}
@@ -511,24 +1202,15 @@ class IntakeAgent(BaseAgent):
 
     def _fallback_extraction(self, text: str, missing: list[str]) -> dict[str, Any]:
         """Simple pattern-based extraction as fallback."""
-        import re
-
         extracted: dict[str, Any] = {}
         text_stripped = text.strip()
         text_lower = text_stripped.lower()
 
         # Contact preference detection
         if "contact_preference" in missing:
-            pref_map = {
-                "email": ["email", "e-mail", "email me"],
-                "sms": ["sms", "text", "text me", "message me", "whatsapp"],
-                "phone": ["call", "phone", "ring", "call me", "telephone"],
-                "websocket": ["chat", "this", "here", "online", "web"],
-            }
-            for pref, keywords in pref_map.items():
-                if any(kw in text_lower for kw in keywords):
-                    extracted["contact_preference"] = pref
-                    break
+            pref = self._detect_contact_preference(text_lower)
+            if pref:
+                extracted["contact_preference"] = pref
 
         # NHS number: exactly 10 digits
         if "nhs_number" in missing:
@@ -569,8 +1251,24 @@ class IntakeAgent(BaseAgent):
             if practice_kw:
                 extracted["gp_practice"] = text_stripped[:len(practice_kw.group(0))].strip()
 
+        # Next of kin / emergency contact
+        if "next_of_kin" in missing:
+            nok_patterns = [
+                r'next[\s\-]+of[\s\-]+kin\s+(?:is|:|-|—)\s*(.+?)(?:\s*$)',
+                r'emergency\s+contact\s+(?:is|:|-|—)\s*(.+?)(?:\s*$)',
+                r'(?:my\s+)?\bkin\b\s+is\s+(.+?)(?:\s*$)',
+            ]
+            for pattern in nok_patterns:
+                nok_match = re.search(pattern, text_stripped, re.IGNORECASE)
+                if nok_match:
+                    nok_value = nok_match.group(1).strip()
+                    nok_value = re.sub(r'\s*,?\s*(?:slot|book|appointment).*$', '', nok_value, flags=re.IGNORECASE).strip()
+                    if nok_value:
+                        extracted["next_of_kin"] = nok_value
+                    break
+
         # Name: 2-5 words, no digits, no sentence words
-        if "name" in missing and not extracted and not any(c.isdigit() for c in text_stripped):
+        if "name" in missing and "name" not in extracted and not any(c.isdigit() for c in text_stripped):
             words = text_stripped.split()
             sentence_indicators = {
                 "i", "my", "the", "is", "am", "hi", "hello", "hey",

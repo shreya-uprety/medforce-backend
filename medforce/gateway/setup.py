@@ -51,9 +51,10 @@ async def initialize_gateway() -> Gateway:
 
     logger.info("Initializing MedForce Gateway...")
 
-    # 1. GCS-backed diary store
+    # 1. GCS-backed diary store (eager init to avoid cold-start on first request)
     from medforce.dependencies import get_gcs
     gcs = get_gcs()
+    gcs._ensure_initialized()
     _diary_store = DiaryStore(gcs)
 
     # 2. Dispatcher registry
@@ -81,7 +82,7 @@ async def initialize_gateway() -> Gateway:
     # Booking registry for slot holds / double-booking prevention
     booking_registry = BookingRegistry(gcs_bucket_manager=gcs)
 
-    _gateway.register_agent("intake", IntakeAgent())
+    _gateway.register_agent("intake", IntakeAgent(gcs_bucket_manager=gcs))
     _gateway.register_agent("clinical", ClinicalAgent())
     _gateway.register_agent("booking", BookingAgent(booking_registry=booking_registry))
     _gateway.register_agent("gp_comms", GPCommunicationHandler())

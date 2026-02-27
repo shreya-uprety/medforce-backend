@@ -349,11 +349,13 @@ class TestEventChaining:
         """Clinical emitting CLINICAL_COMPLETE should auto-route to booking."""
         gateway, store, harness = create_test_gateway()
 
-        # Create a diary ready for scoring
+        # Create a diary ready for scoring (in doc collection with requests satisfied)
         diary = PatientDiary.create_new("PT-CHAIN-001")
         diary.header.current_phase = Phase.CLINICAL
-        diary.clinical.sub_phase = ClinicalSubPhase.ASKING_QUESTIONS
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
         diary.clinical.chief_complaint = "liver pain"
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
         diary.clinical.questions_asked = [
             ClinicalQuestion(question="Q1?", answer="A1"),
             ClinicalQuestion(question="Q2?", answer="A2"),
@@ -371,7 +373,7 @@ class TestEventChaining:
                 "type": "lab_results",
                 "file_ref": "gs://test/labs.pdf",
                 "channel": "test_harness",
-                "extracted_values": {"bilirubin": 6.0},
+                "extracted_values": {"bilirubin": 90},
             },
             sender_id="PATIENT",
             sender_role=SenderRole.PATIENT,

@@ -412,13 +412,13 @@ class TestSkipperPatient:
 
     @pytest.mark.asyncio
     async def test_empty_message_no_crash(self, intake_agent):
-        """Empty message → no crash, asks for first field."""
+        """Empty message → no crash, sends welcome + role question."""
         diary = PatientDiary.create_new("PT-SKIP")
         event = _user_msg("PT-SKIP", "")
         result = await intake_agent.process(event, diary)
 
         assert result is not None
-        assert len(result.responses) == 1
+        assert len(result.responses) == 2  # welcome + role question
         assert len(result.emitted_events) == 0
 
     @pytest.mark.asyncio
@@ -429,7 +429,7 @@ class TestSkipperPatient:
         result = await intake_agent.process(event, diary)
 
         assert result is not None
-        assert len(result.responses) == 1
+        assert len(result.responses) == 2  # welcome + role question
 
     @pytest.mark.asyncio
     async def test_only_required_fields_completes_intake(self, intake_agent):
@@ -542,7 +542,7 @@ class TestSkipperPatient:
         _seed_booking_complete(diary)
 
         event = EventEnvelope.heartbeat("PT-SKIP", days_since_appointment=14)
-        result = monitoring_agent._handle_heartbeat(event, diary)
+        result = await monitoring_agent._handle_heartbeat(event, diary)
 
         assert result is not None
         # No deterioration alert
@@ -635,7 +635,7 @@ class TestHappyPath:
         assert diary.clinical.chief_complaint is not None
         assert diary.clinical.pain_level == 5
 
-        # Answer a couple more questions
+        # Answer medications and allergies (safety questions)
         diary.clinical.questions_asked.append(
             ClinicalQuestion(question="Allergies?")
         )
@@ -645,7 +645,18 @@ class TestHappyPath:
         diary.clinical.questions_asked.append(
             ClinicalQuestion(question="Medications?")
         )
-        event = _user_msg("PT-HAPPY", "skip")
+        event = _user_msg("PT-HAPPY", "No medications")
+        result = await clinical_agent.process(event, diary)
+        diary.clinical.meds_addressed = True
+        diary.clinical.allergies_addressed = True
+
+        # Answer enough clinical questions to meet scoring threshold (5)
+        for i in range(4):
+            diary.clinical.questions_asked.append(
+                ClinicalQuestion(question=f"Follow-up {i}?", answer=f"Answer {i}")
+            )
+
+        event = _user_msg("PT-HAPPY", "nothing else to add")
         result = await clinical_agent.process(event, diary)
 
         # Should either ask for documents or complete
@@ -712,7 +723,7 @@ class TestHappyPath:
 
         # Day 14 heartbeat
         hb = EventEnvelope.heartbeat("PT-HAPPY", days_since_appointment=14)
-        result = monitoring_agent._handle_heartbeat(hb, diary)
+        result = await monitoring_agent._handle_heartbeat(hb, diary)
         assert not any(
             e.event_type == EventType.DETERIORATION_ALERT for e in result.emitted_events
         )
@@ -726,7 +737,7 @@ class TestHappyPath:
 
         # Day 30 heartbeat
         hb = EventEnvelope.heartbeat("PT-HAPPY", days_since_appointment=30)
-        result = monitoring_agent._handle_heartbeat(hb, diary)
+        result = await monitoring_agent._handle_heartbeat(hb, diary)
         assert not any(
             e.event_type == EventType.DETERIORATION_ALERT for e in result.emitted_events
         )
@@ -923,7 +934,7 @@ class TestWorstCase:
 
         # Heartbeat arrives
         hb = EventEnvelope.heartbeat("PT-WORST", days_since_appointment=14)
-        result = monitoring_agent._handle_heartbeat(hb, diary)
+        result = await monitoring_agent._handle_heartbeat(hb, diary)
 
         # Should return empty result (monitoring inactive)
         assert len(result.responses) == 0

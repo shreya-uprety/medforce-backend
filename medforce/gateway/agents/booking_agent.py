@@ -109,6 +109,9 @@ class BookingAgent(BaseAgent):
         if event.event_type == EventType.RESCHEDULE_REQUEST:
             return await self._handle_reschedule(event, diary)
 
+        if event.event_type == EventType.CROSS_PHASE_REPROMPT:
+            return await self._handle_reprompt(event, diary)
+
         if event.event_type == EventType.USER_MESSAGE:
             return await self._handle_user_message(event, diary)
 
@@ -116,6 +119,39 @@ class BookingAgent(BaseAgent):
             "Booking received unexpected event: %s", event.event_type.value
         )
         return AgentResult(updated_diary=diary)
+
+    async def _handle_reprompt(
+        self, event: EventEnvelope, diary: PatientDiary
+    ) -> AgentResult:
+        """Re-present appointment slots after a cross-phase interaction."""
+        channel = event.payload.get("channel", "websocket")
+
+        # If already booked, no re-prompt needed
+        if diary.booking.confirmed:
+            return AgentResult(updated_diary=diary)
+
+        # If no slots offered yet, trigger full booking flow
+        if not diary.booking.slots_offered:
+            return await self._handle_clinical_complete(event, diary)
+
+        # Re-present available slots
+        slot_lines = []
+        for i, slot in enumerate(diary.booking.slots_offered, 1):
+            provider = f" with {slot.provider}" if slot.provider else ""
+            slot_lines.append(f"  {i}. {slot.date} at {slot.time}{provider}")
+        slots_text = "\n".join(slot_lines)
+
+        response = AgentResponse(
+            recipient="patient",
+            channel=channel,
+            message=(
+                f"Now, back to your appointment booking. Here are your "
+                f"available slots:\n\n{slots_text}\n\n"
+                f"Please reply with 1, 2, or 3 to choose your preferred time."
+            ),
+            metadata={"patient_id": event.patient_id},
+        )
+        return AgentResult(updated_diary=diary, responses=[response])
 
     # ── Handlers ──
 
@@ -247,8 +283,17 @@ class BookingAgent(BaseAgent):
             )
             return AgentResult(updated_diary=diary, responses=[response])
 
-        # If no slots offered yet, offer them
+        # If no slots offered yet, offer them — but guard against stale diary
+        # state where a slot selection ("1", "2", "3") arrives after a
+        # concurrency-driven cache miss that lost the slots_offered data.
         if not diary.booking.slots_offered:
+            # If the user sent a pure slot number, it's likely a selection for
+            # slots we already offered but lost to a stale diary load.
+            # Re-offer rather than silently dropping their input.
+            logger.info(
+                "Booking: no slots_offered for patient %s — re-offering",
+                event.patient_id,
+            )
             return await self._handle_clinical_complete(event, diary)
 
         # Check if patient is rejecting all offered slots
@@ -259,6 +304,11 @@ class BookingAgent(BaseAgent):
         selected_slot = self._parse_slot_selection(text, diary.booking.slots_offered)
 
         if selected_slot is None:
+            # If cross-phase content was detected, stay silent — the cross-phase
+            # agent will handle the response and emit a reprompt afterwards.
+            if event.payload.get("_has_cross_phase_content", False):
+                return AgentResult(updated_diary=diary)
+
             response = AgentResponse(
                 recipient="patient",
                 channel=channel,
@@ -270,6 +320,14 @@ class BookingAgent(BaseAgent):
                 metadata={"patient_id": event.patient_id},
             )
             return AgentResult(updated_diary=diary, responses=[response])
+
+        # If the message also contains cross-phase intake content (e.g.
+        # "slot 1 and my next of kin is ..."), extract it inline so the diary
+        # is updated before the booking confirmation is saved.  The gateway
+        # will also emit a CROSS_PHASE_DATA event, but extracting here
+        # guarantees the diary has the data immediately.
+        if event.payload.get("_has_cross_phase_content", False):
+            self._inline_intake_extraction(text, diary)
 
         # Confirm the booking
         return await self._confirm_booking(event, diary, selected_slot, channel)
@@ -729,3 +787,50 @@ class BookingAgent(BaseAgent):
         )
 
         return instructions
+
+    @staticmethod
+    def _inline_intake_extraction(text: str, diary: PatientDiary) -> None:
+        """Quick inline extraction of intake fields from mixed booking messages.
+
+        This is a belt-and-suspenders complement to the gateway's
+        CROSS_PHASE_DATA pipeline: we extract directly so the diary
+        is updated in the same save as the booking confirmation.
+        """
+        import re
+        text_lower = text.lower()
+
+        # Next of kin: "next of kin is <Name> [on <phone>]"
+        nok_match = re.search(
+            r'next[\s\-]+of[\s\-]+kin\s+(?:is|:|-|—)\s*(.+?)(?:\s*$)',
+            text, re.IGNORECASE,
+        )
+        if not nok_match:
+            nok_match = re.search(
+                r'emergency\s+contact\s+(?:is|:|-|—)\s*(.+?)(?:\s*$)',
+                text, re.IGNORECASE,
+            )
+        if nok_match:
+            nok_value = nok_match.group(1).strip()
+            # Strip trailing booking/slot text if present
+            nok_value = re.sub(
+                r'\s*,?\s*(?:slot|book|appointment).*$', '',
+                nok_value, flags=re.IGNORECASE,
+            ).strip()
+            if nok_value:
+                diary.intake.mark_field_collected("next_of_kin", nok_value)
+
+        # Phone embedded in NOK text: "... on 07700123456"
+        phone_match = re.search(
+            r'(?:on|at|phone|tel)\s+(\+?44\d[\d\s\-]{8,12}|07\d[\d\s\-]{8,11})',
+            text, re.IGNORECASE,
+        )
+        if phone_match and not diary.intake.phone:
+            diary.intake.mark_field_collected("phone", phone_match.group(1).strip())
+
+        # GP name: "my GP is Dr. <Name>"
+        gp_match = re.search(
+            r'(?:gp|doctor)\s+is\s+((?:Dr\.?|Doctor)\s+[A-Z][a-zA-Z\-]+)',
+            text, re.IGNORECASE,
+        )
+        if gp_match:
+            diary.intake.mark_field_collected("gp_name", gp_match.group(1).strip())

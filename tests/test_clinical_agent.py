@@ -61,6 +61,18 @@ def make_clinical_diary_with_questions(
     return diary
 
 
+def make_scoring_ready_diary(n_questions: int = 3) -> PatientDiary:
+    """Create a diary in COLLECTING_DOCUMENTS with all doc requests satisfied.
+
+    Use this for tests that need to trigger scoring via _ready_for_scoring().
+    """
+    diary = make_clinical_diary_with_questions(n_questions=n_questions, answered=True)
+    diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+    diary.clinical.pending_document_requests = ["blood test results"]
+    diary.clinical.documents_requested = ["blood test results"]
+    return diary
+
+
 def make_intake_complete_event(patient_id: str = "PT-100") -> EventEnvelope:
     return EventEnvelope.handoff(
         event_type=EventType.INTAKE_COMPLETE,
@@ -152,7 +164,7 @@ class TestIntakeComplete:
 
         assert result.updated_diary.clinical.sub_phase == ClinicalSubPhase.ASKING_QUESTIONS
         assert len(result.responses) == 1
-        assert "clinical questions" in result.responses[0].message.lower()
+        assert "questions" in result.responses[0].message.lower()
 
     @pytest.mark.asyncio
     async def test_response_goes_to_patient(self):
@@ -229,7 +241,9 @@ class TestUserMessage:
     async def test_scores_when_ready(self):
         """When enough data gathered, should prompt for docs or score."""
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions(n_questions=3, answered=True)
+        diary = make_clinical_diary_with_questions(n_questions=5, answered=True)
+        diary.clinical.meds_addressed = True
+        diary.clinical.allergies_addressed = True
         event = make_user_message_event("Nothing else to add")
 
         result = await agent.process(event, diary)
@@ -430,6 +444,10 @@ class TestDocumentUpload:
         """Uploading labs when ready should trigger scoring."""
         agent = ClinicalAgent()
         diary = make_clinical_diary_with_questions(n_questions=2, answered=True)
+        # Set up document collection phase with pending requests already asked
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
         event = make_document_event(
             extracted_values={"bilirubin": 6.0}
         )
@@ -507,11 +525,11 @@ class TestScoringAndCompletion:
     @pytest.mark.asyncio
     async def test_score_and_complete_sets_risk(self):
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions()
+        diary = make_scoring_ready_diary()
         diary.clinical.documents.append(
             ClinicalDocument(
                 type="lab_results", processed=True,
-                extracted_values={"bilirubin": 6.0},
+                extracted_values={"bilirubin": 90},
             )
         )
         event = make_user_message_event("no more info")
@@ -530,11 +548,11 @@ class TestScoringAndCompletion:
         We add a doc so it scores immediately.
         """
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions()
+        diary = make_scoring_ready_diary()
         diary.clinical.documents.append(
             ClinicalDocument(
                 type="lab_results", processed=True,
-                extracted_values={"bilirubin": 3.0},
+                extracted_values={"bilirubin": 30},
             )
         )
         event = make_user_message_event("nothing else")
@@ -553,10 +571,10 @@ class TestScoringAndCompletion:
     async def test_sets_phase_to_booking(self):
         """After scoring, phase should be BOOKING.
 
-        Add a document so agent doesn't enter COLLECTING_DOCUMENTS.
+        Diary is in COLLECTING_DOCUMENTS with all doc requests satisfied.
         """
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions()
+        diary = make_scoring_ready_diary()
         diary.clinical.documents.append(
             ClinicalDocument(
                 type="lab_results", processed=True,
@@ -573,10 +591,10 @@ class TestScoringAndCompletion:
     async def test_sends_completion_message_with_risk(self):
         """Completion message should reference risk/priority.
 
-        Add a document to bypass COLLECTING_DOCUMENTS.
+        Diary is in COLLECTING_DOCUMENTS with all doc requests satisfied.
         """
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions()
+        diary = make_scoring_ready_diary()
         diary.clinical.documents.append(
             ClinicalDocument(
                 type="lab_results", processed=True,
@@ -602,7 +620,9 @@ class TestReadyForScoring:
 
     def test_ready_with_complaint_and_answers(self):
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions(n_questions=3, answered=True)
+        diary = make_scoring_ready_diary(n_questions=5)
+        diary.clinical.meds_addressed = True
+        diary.clinical.allergies_addressed = True
         assert agent._ready_for_scoring(diary) is True
 
     def test_not_ready_without_complaint(self):
@@ -618,10 +638,13 @@ class TestReadyForScoring:
     def test_ready_with_lab_data_only(self):
         agent = ClinicalAgent()
         diary = make_diary()
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
         diary.clinical.documents.append(
             ClinicalDocument(
                 type="lab_results", processed=True,
-                extracted_values={"bilirubin": 3.0},
+                extracted_values={"bilirubin": 30},
             )
         )
         assert agent._ready_for_scoring(diary) is True
@@ -656,7 +679,7 @@ class TestDeteriorationHandler:
             patient_id="PT-100",
             source_agent="monitoring",
             payload={
-                "new_values": {"bilirubin": 8.0},
+                "new_values": {"bilirubin": 90},
                 "channel": "websocket",
             },
         )
@@ -731,7 +754,7 @@ class TestQuestionGeneration:
     @pytest.mark.asyncio
     async def test_fallback_generic_question(self):
         agent = ClinicalAgent()
-        # Create a diary with all gaps filled so generic fallback is used
+        # Create a diary with most gaps filled — symptom_timeline still open
         diary = make_diary()
         diary.clinical.chief_complaint = "headache"
         diary.clinical.medical_history = ["diabetes"]
@@ -739,7 +762,7 @@ class TestQuestionGeneration:
         diary.clinical.allergies = ["penicillin"]
         diary.clinical.pain_level = 3
         question = agent._fallback_question(diary)
-        assert "health" in question.lower()
+        assert "symptom" in question.lower() or "health" in question.lower()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -811,11 +834,11 @@ class TestClinicalScenarios:
     async def test_scenario_high_risk_lab_upload(self):
         """Patient uploads critical lab results → HIGH risk → BOOKING."""
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions()
+        diary = make_scoring_ready_diary()
 
-        # Upload labs with critical values
+        # Upload labs with critical values (UK units)
         event = make_document_event(
-            extracted_values={"bilirubin": 8.0, "ALT": 700, "platelets": 30}
+            extracted_values={"bilirubin": 90, "ALT": 700, "platelets": 30}
         )
         result = await agent.process(event, diary)
 
@@ -826,17 +849,192 @@ class TestClinicalScenarios:
     async def test_scenario_gp_provides_labs(self):
         """GP responds with lab data → feeds into scoring."""
         agent = ClinicalAgent()
-        diary = make_clinical_diary_with_questions()
+        diary = make_scoring_ready_diary()
         diary.gp_channel = GPChannel(
             gp_name="Dr. Patel",
             queries=[GPQuery(query_id="GPQ-001", status="pending")],
         )
 
         event = make_gp_response_event(
-            lab_results={"bilirubin": 6.0, "INR": 2.5}
+            lab_results={"bilirubin": 90, "INR": 2.5}
         )
         result = await agent.process(event, diary)
 
         # GP data should trigger scoring if ready
         assert result.updated_diary.header.current_phase == Phase.BOOKING
         assert result.updated_diary.clinical.risk_level == RiskLevel.HIGH
+
+
+# ══════════════════════════════════════════════════════════════
+#  Tests for referral narrative + dynamic specialty
+# ══════════════════════════════════════════════════════════════
+
+
+class TestBuildClinicalSummary:
+    """Verify _build_clinical_summary prefers narrative over structured fields."""
+
+    def setup_method(self):
+        self.agent = ClinicalAgent(llm_client=MagicMock())
+
+    def test_narrative_preferred_over_structured(self):
+        diary = make_diary()
+        diary.clinical.referral_narrative = (
+            "Clara Higgins is a 42-year-old woman with Hepatitis C Genotype 3a, "
+            "HCV RNA 1.4 million IU/mL, referred for FibroScan and DAA therapy."
+        )
+        diary.clinical.chief_complaint = "Hepatitis C"
+        diary.clinical.condition_context = "hepatitis"
+        diary.clinical.referral_analysis = {
+            "chief_complaint": "Hepatitis C",
+            "key_findings": "Genotype 3a",
+        }
+
+        summary = self.agent._build_clinical_summary(diary)
+        # Narrative should be the primary content
+        assert "Genotype 3a" in summary
+        assert "DAA therapy" in summary
+        # Should NOT fall back to structured "Condition: hepatitis" format
+        assert not summary.startswith("Condition:")
+
+    def test_fallback_to_structured_when_no_narrative(self):
+        diary = make_diary()
+        diary.clinical.referral_narrative = None
+        diary.clinical.chief_complaint = "Hepatitis C"
+        diary.clinical.condition_context = "hepatitis"
+        diary.clinical.referral_analysis = {
+            "key_findings": "Genotype 3a",
+            "lab_values": {"ALT": "72 U/L"},
+        }
+
+        summary = self.agent._build_clinical_summary(diary)
+        assert "Condition: hepatitis" in summary
+        assert "Chief complaint: Hepatitis C" in summary
+        assert "Key findings: Genotype 3a" in summary
+        assert "ALT: 72 U/L" in summary
+
+    def test_post_referral_data_appended_to_narrative(self):
+        diary = make_diary()
+        diary.clinical.referral_narrative = "Patient referred for evaluation."
+        diary.clinical.red_flags = ["jaundice"]
+        diary.clinical.lifestyle_factors = {"alcohol": "6-8 units/week"}
+        diary.clinical.pain_level = 3
+        diary.clinical.pain_location = "right upper quadrant"
+
+        summary = self.agent._build_clinical_summary(diary)
+        assert "Patient referred for evaluation." in summary
+        assert "jaundice" in summary
+        assert "alcohol" in summary
+        assert "Pain: 3/10 (right upper quadrant)" in summary
+
+    def test_empty_diary_returns_no_data_message(self):
+        diary = make_diary()
+        diary.clinical.referral_narrative = None
+        summary = self.agent._build_clinical_summary(diary)
+        assert summary == "No referral data available."
+
+
+class TestDeriveSpecialty:
+    """Verify _derive_specialty maps conditions to correct specialty strings."""
+
+    def test_hepatitis_maps_to_hepatology(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "Hepatitis C"
+        assert ClinicalAgent._derive_specialty(diary) == "hepatology triage nurse"
+
+    def test_hcv_maps_to_hepatology(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "HCV"
+        assert ClinicalAgent._derive_specialty(diary) == "hepatology triage nurse"
+
+    def test_cirrhosis_maps_to_hepatology(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "cirrhosis"
+        assert ClinicalAgent._derive_specialty(diary) == "hepatology triage nurse"
+
+    def test_masld_maps_to_hepatology(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "MASLD"
+        assert ClinicalAgent._derive_specialty(diary) == "hepatology triage nurse"
+
+    def test_cancer_maps_to_oncology(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "HCC"
+        diary.clinical.chief_complaint = "2WW liver mass"
+        assert ClinicalAgent._derive_specialty(diary) == "oncology triage nurse"
+
+    def test_ibs_maps_to_gastro(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "IBS"
+        assert ClinicalAgent._derive_specialty(diary) == "gastroenterology triage nurse"
+
+    def test_crohns_maps_to_gastro(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "Crohn's disease"
+        diary.clinical.chief_complaint = "Crohn flare"
+        assert ClinicalAgent._derive_specialty(diary) == "gastroenterology triage nurse"
+
+    def test_unknown_maps_to_clinical(self):
+        diary = make_diary()
+        diary.clinical.condition_context = None
+        diary.clinical.chief_complaint = None
+        assert ClinicalAgent._derive_specialty(diary) == "clinical triage nurse"
+
+    def test_generic_complaint_maps_to_clinical(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "unknown"
+        diary.clinical.chief_complaint = "abnormal blood tests"
+        assert ClinicalAgent._derive_specialty(diary) == "clinical triage nurse"
+
+    def test_pancreatic_maps_to_hepatobiliary(self):
+        diary = make_diary()
+        diary.clinical.condition_context = "pancreatic cyst"
+        assert ClinicalAgent._derive_specialty(diary) == "hepatobiliary triage nurse"
+
+
+class TestCacheReferralNarrative:
+    """Verify intake agent caches referral narrative into diary."""
+
+    def test_narrative_stored_in_diary(self):
+        from medforce.gateway.agents.intake_agent import IntakeAgent
+
+        agent = IntakeAgent(llm_client=MagicMock())
+        diary = PatientDiary.create_new("PT-200")
+        extracted = {
+            "name": "Clara Higgins",
+            "chief_complaint": "Hepatitis C",
+            "clinical_narrative": (
+                "Clara Higgins is a 42-year-old referred with Hepatitis C "
+                "Genotype 3a for FibroScan and DAA therapy evaluation."
+            ),
+        }
+
+        agent._cache_referral_data(diary, extracted, "PT-200")
+        assert diary.clinical.referral_narrative is not None
+        assert "Genotype 3a" in diary.clinical.referral_narrative
+
+    def test_missing_narrative_handled_gracefully(self):
+        from medforce.gateway.agents.intake_agent import IntakeAgent
+
+        agent = IntakeAgent(llm_client=MagicMock())
+        diary = PatientDiary.create_new("PT-201")
+        extracted = {
+            "name": "Test Patient",
+            "chief_complaint": "Abdominal pain",
+        }
+
+        agent._cache_referral_data(diary, extracted, "PT-201")
+        assert diary.clinical.referral_narrative is None
+
+    def test_empty_string_narrative_not_stored(self):
+        from medforce.gateway.agents.intake_agent import IntakeAgent
+
+        agent = IntakeAgent(llm_client=MagicMock())
+        diary = PatientDiary.create_new("PT-202")
+        extracted = {
+            "name": "Test Patient",
+            "clinical_narrative": "",
+        }
+
+        agent._cache_referral_data(diary, extracted, "PT-202")
+        # Empty string is falsy, so should not be stored
+        assert diary.clinical.referral_narrative is None

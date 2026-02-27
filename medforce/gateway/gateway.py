@@ -26,6 +26,7 @@ from medforce.gateway.channels import (
 )
 from medforce.gateway.diary import (
     ConversationEntry,
+    CrossPhaseState,
     DiaryConcurrencyError,
     DiaryNotFoundError,
     DiaryStore,
@@ -64,6 +65,21 @@ class Gateway:
       to whichever agent owns the patient's current diary phase.
     """
 
+    # Cross-phase keyword lists for content routing
+    CLINICAL_KEYWORDS = [
+        "allerg", "medication", "medicine", "taking", "prescribed",
+        "symptom", "pain", "hurts", "bleeding", "dizzy", "nausea",
+        "vomit", "fever", "swelling", "rash", "breathing",
+        "diagnosed", "condition", "surgery", "operation",
+        "side effect", "reaction", "intolerant",
+    ]
+
+    INTAKE_KEYWORDS = [
+        "next of kin", "next-of-kin", "emergency contact",
+        "my address", "moved to", "new phone", "new email",
+        "my gp", "gp is", "changed my name", "nhs number",
+    ]
+
     # Strategy A: event_type → agent name
     EXPLICIT_ROUTES: dict[EventType, str] = {
         EventType.INTAKE_COMPLETE: "clinical",
@@ -80,6 +96,7 @@ class Gateway:
         EventType.HELPER_REGISTRATION: "helper_manager",
         EventType.HELPER_VERIFIED: "helper_manager",
         EventType.AGENT_ERROR: "error_handler",
+        EventType.INTAKE_FORM_SUBMITTED: "intake",
     }
 
     # Strategy B: phase → agent name
@@ -106,6 +123,8 @@ class Gateway:
         self._processed_events: dict[str, OrderedDict[str, bool]] = {}  # patient_id → {event_id: True}
         # Per-patient diary cache — safe because events per patient are sequential
         self._diary_cache: dict[str, tuple[PatientDiary, int]] = {}  # patient_id → (diary, generation)
+        # Background tasks (fire-and-forget chat persistence etc.)
+        self._bg_tasks: set[asyncio.Task] = set()
         # P0: Per-patient rate limiting — patient_id → list of timestamps
         self._rate_limiter: dict[str, list[float]] = {}
         # P2: Dead Letter Queue — failed events stored for ops review
@@ -219,6 +238,16 @@ class Gateway:
         diary, generation = await self._load_or_create_diary(event)
         logger.info("  [timing] diary load: %.2fs", time.monotonic() - t0)
 
+        # 1b. Cross-phase timeout safety — auto-clear stale cross-phase state
+        if diary.cross_phase_state.active and diary.cross_phase_state.started:
+            elapsed = (datetime.now(timezone.utc) - diary.cross_phase_state.started).total_seconds()
+            if elapsed > 600:  # 10 minutes
+                logger.info(
+                    "Cross-phase state timed out for patient %s (%.0fs) — clearing",
+                    event.patient_id, elapsed,
+                )
+                diary.cross_phase_state = CrossPhaseState()
+
         # 2. Check permissions
         perm_result = self._check_permissions(event, diary)
         if not perm_result.allowed:
@@ -246,8 +275,34 @@ class Gateway:
                 responses=[rejection],
             )
 
-        # 3. Route to the correct agent
-        target_agent_name = self._resolve_target(event, diary)
+        # 3. Pre-detect cross-phase content BEFORE primary agent
+        cross_phase_detected = False
+        xphase_targets: list[str] = []
+        xphase_from_phase = diary.header.current_phase.value  # capture BEFORE agent may change it
+        if chain_depth == 0 and event.event_type == EventType.USER_MESSAGE:
+            text_for_xphase = event.payload.get("text", "")
+            current_phase_val = diary.header.current_phase.value
+            xphase_targets = self._detect_cross_phase_targets(text_for_xphase, current_phase_val)
+            if xphase_targets:
+                cross_phase_detected = True
+                event.payload["_has_cross_phase_content"] = True
+                event.payload["_cross_phase_targets"] = xphase_targets
+
+        # 3b. Cross-phase state redirect — when awaiting a follow-up response,
+        #     route the USER_MESSAGE directly to the cross-phase agent
+        if (
+            event.event_type == EventType.USER_MESSAGE
+            and diary.cross_phase_state.active
+            and diary.cross_phase_state.awaiting_response
+        ):
+            target_agent_name = diary.cross_phase_state.target_agent
+            event.payload["_cross_phase_followup"] = True
+            event.payload["_pending_phase"] = diary.cross_phase_state.pending_phase
+            # Don't also emit cross-phase events for the follow-up response
+            cross_phase_detected = False
+            xphase_targets = []
+        else:
+            target_agent_name = self._resolve_target(event, diary)
 
         if target_agent_name is None:
             logger.info(
@@ -281,13 +336,22 @@ class Gateway:
                 event.payload["text"] = text[:MAX_MESSAGE_LENGTH]
 
         # 4b. Log the inbound conversation entry
+        # Determine the chat channel for this event: explicit override > phase-based
+        source_chat_channel = event.payload.get("_source_chat_channel")
         if event.event_type == EventType.USER_MESSAGE:
             role = event.sender_role.value if isinstance(event.sender_role, SenderRole) else event.sender_role
+            inbound_chat_channel = (
+                source_chat_channel
+                or ("monitoring"
+                    if diary.header.current_phase == Phase.MONITORING
+                    else "pre_consultation")
+            )
             diary.add_conversation(
                 ConversationEntry(
                     direction=f"{role.upper()}→AGENT",
                     channel=event.payload.get("channel", ""),
                     message=event.payload.get("text", ""),
+                    chat_channel=inbound_chat_channel,
                 )
             )
 
@@ -343,13 +407,54 @@ class Gateway:
             )
             return AgentResult(updated_diary=diary, responses=[error_response])
 
-        # 6. Log outbound responses as conversation entries
+        # 5b. Cross-phase content routing — emit CROSS_PHASE_DATA events
+        #     using the pre-detected targets (step 3) so the primary agent
+        #     already saw the _has_cross_phase_content flag.
+        #     Skip if the primary agent already responded (e.g. monitoring
+        #     started a deterioration assessment — don't also fire cross-phase).
+        primary_responded = bool(result.responses)
+        if cross_phase_detected and xphase_targets and not primary_responded:
+            text_for_xphase = event.payload.get("text", "")
+            for tgt_agent in xphase_targets:
+                xphase_event = EventEnvelope.handoff(
+                    event_type=EventType.CROSS_PHASE_DATA,
+                    patient_id=event.patient_id,
+                    source_agent="gateway",
+                    payload={
+                        "_target_agent": tgt_agent,
+                        "text": text_for_xphase,
+                        "from_phase": xphase_from_phase,
+                        "channel": event.payload.get("channel", "websocket"),
+                    },
+                    correlation_id=event.correlation_id,
+                )
+                result.emitted_events.append(xphase_event)
+                logger.info(
+                    "Cross-phase data detected: %s → %s for patient %s",
+                    xphase_from_phase, tgt_agent, event.patient_id,
+                )
+
+        # 6. Stamp chat_channel on outbound responses and log as conversation entries
+        #    If the event carries a _source_chat_channel (propagated from a parent
+        #    event in the monitoring chat), honour it even when the phase has changed
+        #    (e.g. booking agent sets phase=BOOKING during reschedule).
+        outbound_chat_channel = (
+            source_chat_channel
+            or (
+                "monitoring"
+                if target_agent_name == "monitoring"
+                or result.updated_diary.header.current_phase == Phase.MONITORING
+                else "pre_consultation"
+            )
+        )
         for resp in result.responses:
+            resp.metadata.setdefault("chat_channel", outbound_chat_channel)
             result.updated_diary.add_conversation(
                 ConversationEntry(
                     direction=f"AGENT→{resp.recipient.upper()}",
                     channel=resp.channel,
                     message=resp.message[:200] if resp.message else "",
+                    chat_channel=resp.metadata.get("chat_channel", outbound_chat_channel),
                 )
             )
 
@@ -362,6 +467,17 @@ class Gateway:
                 result.updated_diary.header.current_phase.value,
                 event.patient_id,
             )
+
+        # 6c. Eagerly update the diary cache BEFORE dispatching responses.
+        #      This ensures that any API consumer polling the diary after
+        #      receiving a response sees the latest agent-updated state,
+        #      even while the GCS save (step 8) is still in flight.
+        #      The generation is stale until step 8 updates it, but the
+        #      per-patient queue guarantees no concurrent event uses it.
+        self._diary_cache[event.patient_id] = (
+            result.updated_diary.model_copy(deep=True),
+            generation,
+        )
 
         # 7. Dispatch responses IMMEDIATELY (before diary save) so patients
         #    don't wait for GCS round-trips.
@@ -376,75 +492,111 @@ class Gateway:
                         dr.error,
                     )
 
-        # 8. Save the updated diary (with retry + backoff)
-        #    GCS client is NOT thread-safe for concurrent ops — keep sequential.
-        new_gen = generation
-        diary_save_backoffs = [0.1, 0.3, 0.9]
-        for attempt in range(len(diary_save_backoffs) + 1):
-            try:
-                t2 = time.monotonic()
-                new_gen = await asyncio.to_thread(
-                    self._diary_store.save,
-                    event.patient_id, result.updated_diary, generation,
-                )
-                logger.info("  [timing] diary save: %.2fs", time.monotonic() - t2)
-                # Cache the saved diary for the next event's load
-                self._diary_cache[event.patient_id] = (
-                    result.updated_diary.model_copy(deep=True),
-                    new_gen,
-                )
-                break
-            except DiaryConcurrencyError:
-                # Invalidate cache on concurrency conflict
-                self._diary_cache.pop(event.patient_id, None)
-                if attempt < len(diary_save_backoffs):
-                    logger.warning(
-                        "Diary concurrency conflict for patient %s (attempt %d) — reloading",
-                        event.patient_id, attempt + 1,
+        # 8. Cache diary immediately so reads return fresh data instantly,
+        #    then persist to GCS in background (fire-and-forget).
+        #    This eliminates the 30-90s GCS save blocking the response pipeline.
+        self._diary_cache[event.patient_id] = (
+            result.updated_diary.model_copy(deep=True),
+            generation,  # will be updated by background save
+        )
+
+        async def _save_diary_bg(pid, diary_copy, gen):
+            backoffs = [0.1, 0.3, 0.9]
+            for attempt in range(len(backoffs) + 1):
+                try:
+                    t2 = time.monotonic()
+                    new_gen = await asyncio.to_thread(
+                        self._diary_store.save, pid, diary_copy, gen,
                     )
-                    try:
-                        _, generation = await asyncio.to_thread(
-                            self._diary_store.load, event.patient_id
+                    logger.info("  [timing] diary save: %.2fs", time.monotonic() - t2)
+                    # Update ONLY the generation in the cache — the diary data
+                    # in the cache may already be newer (updated by a subsequent
+                    # event processed while this bg save was in flight).
+                    # Overwriting with diary_copy would revert to stale state.
+                    cached = self._diary_cache.get(pid)
+                    if cached is not None:
+                        self._diary_cache[pid] = (cached[0], new_gen)
+                    else:
+                        self._diary_cache[pid] = (diary_copy, new_gen)
+                    return
+                except DiaryConcurrencyError:
+                    # Do NOT clear the diary cache — it has the latest agent-
+                    # updated state which is MORE current than what's in GCS.
+                    # Clearing it causes the next event to load stale state
+                    # from GCS, leading to duplicate agent actions (e.g. booking
+                    # agent re-offering slots after the user already selected).
+                    if attempt < len(backoffs):
+                        logger.warning(
+                            "Diary concurrency conflict for patient %s (attempt %d) — retrying",
+                            pid, attempt + 1,
                         )
-                    except Exception:
-                        pass
-                    await asyncio.sleep(diary_save_backoffs[attempt])
-                else:
-                    logger.error(
-                        "Diary save failed after %d retries for patient %s (concurrency)",
-                        len(diary_save_backoffs), event.patient_id,
-                    )
-                    self._metrics["diary_save_failures"] += 1
-            except Exception as exc:
-                if attempt < len(diary_save_backoffs):
-                    logger.warning(
-                        "Diary save failed for patient %s (attempt %d): %s — retrying",
-                        event.patient_id, attempt + 1, exc,
-                    )
-                    await asyncio.sleep(diary_save_backoffs[attempt])
-                else:
-                    logger.error(
-                        "Failed to save diary for patient %s after %d retries: %s",
-                        event.patient_id, len(diary_save_backoffs) + 1, exc,
-                    )
-                    self._metrics["diary_save_failures"] += 1
+                        try:
+                            # Reload generation from GCS for the retry
+                            _, gen = await asyncio.to_thread(
+                                self._diary_store.load, pid
+                            )
+                        except Exception:
+                            pass
+                        await asyncio.sleep(backoffs[attempt])
+                    else:
+                        logger.error(
+                            "Diary save failed after %d retries for %s (concurrency)",
+                            len(backoffs), pid,
+                        )
+                        self._metrics["diary_save_failures"] += 1
+                except Exception as exc:
+                    if attempt < len(backoffs):
+                        logger.warning(
+                            "Diary save failed for %s (attempt %d): %s — retrying",
+                            pid, attempt + 1, exc,
+                        )
+                        await asyncio.sleep(backoffs[attempt])
+                    else:
+                        logger.error(
+                            "Failed to save diary for %s after %d retries: %s",
+                            pid, len(backoffs) + 1, exc,
+                        )
+                        self._metrics["diary_save_failures"] += 1
+
+        save_task = asyncio.create_task(
+            _save_diary_bg(
+                event.patient_id,
+                result.updated_diary.model_copy(deep=True),
+                generation,
+            )
+        )
+        self._bg_tasks.add(save_task)
+        save_task.add_done_callback(self._bg_tasks.discard)
 
         # 9. Persist chat history to patient_data in GCS
-        #    Sequential to avoid GCS client thread contention.
+        #    Fire-and-forget so it doesn't block the patient queue.
         if event.event_type == EventType.USER_MESSAGE or result.responses:
-            try:
-                await asyncio.to_thread(
-                    self._persist_chat_history, event.patient_id, result.updated_diary
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Chat persistence failed for patient %s: %s",
-                    event.patient_id, exc,
-                )
+            async def _persist_bg(pid, diary_copy):
+                try:
+                    await asyncio.to_thread(
+                        self._persist_chat_history, pid, diary_copy
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Chat persistence failed for patient %s: %s", pid, exc,
+                    )
+            task = asyncio.create_task(
+                _persist_bg(event.patient_id, result.updated_diary)
+            )
+            self._bg_tasks.add(task)
+            task.add_done_callback(self._bg_tasks.discard)
 
         # 10. Loop back emitted events (recursive with increased chain depth)
+        #     Propagate _source_chat_channel so child events stay in the same chat.
+        #     Only propagate "monitoring" — pre_consultation is the default and
+        #     should not override agent-based routing (e.g. BOOKING_COMPLETE → monitoring).
         for emitted in result.emitted_events:
             emitted._chain_depth = chain_depth + 1
+            if (
+                outbound_chat_channel == "monitoring"
+                and "_source_chat_channel" not in emitted.payload
+            ):
+                emitted.payload["_source_chat_channel"] = "monitoring"
             logger.info(
                 "Looping back emitted event %s for patient %s (depth=%d)",
                 emitted.event_type.value,
@@ -462,6 +614,15 @@ class Gateway:
     ) -> str | None:
         """Determine which agent should handle this event."""
 
+        # Special handling: CROSS_PHASE_DATA routes to its target agent
+        if event.event_type == EventType.CROSS_PHASE_DATA:
+            return event.payload.get("_target_agent")
+
+        # CROSS_PHASE_REPROMPT routes back to the pending phase's agent
+        if event.event_type == EventType.CROSS_PHASE_REPROMPT:
+            pending = event.payload.get("_pending_phase")
+            return self.PHASE_ROUTES.get(pending)
+
         # Strategy A: explicit routing for handoff / internal events
         if event.is_explicit_route():
             return self.EXPLICIT_ROUTES.get(event.event_type)
@@ -478,22 +639,45 @@ class Gateway:
         )
         return None
 
+    def _detect_cross_phase_targets(
+        self, text: str, current_phase: str
+    ) -> list[str]:
+        """
+        Fast keyword matching to detect cross-phase content.
+        Returns list of agent names that should ALSO receive this data.
+        Excludes the current phase's agent (no self-routing).
+        """
+        text_lower = text.lower()
+        targets = []
+
+        # Check clinical keywords
+        current_agent = self.PHASE_ROUTES.get(current_phase)
+        if current_agent != "clinical":
+            if any(kw in text_lower for kw in self.CLINICAL_KEYWORDS):
+                targets.append("clinical")
+
+        # Check intake keywords
+        if current_agent != "intake":
+            if any(kw in text_lower for kw in self.INTAKE_KEYWORDS):
+                targets.append("intake")
+
+        return targets
+
     # ── Patient Data Persistence ──
 
     def _persist_chat_history(
         self, patient_id: str, diary: PatientDiary
     ) -> None:
         """
-        Persist the conversation log to patient_data/{patient_id}/pre_consultation_chat.json.
-
-        This mirrors the previous implementation's storage pattern, keeping the
-        chat history alongside other patient data in the clinic_sim_dev bucket.
+        Persist the conversation log split by chat_channel:
+          - patient_data/{patient_id}/pre_consultation_chat.json
+          - patient_data/{patient_id}/monitoring_chat.json
         """
         import json as _json
 
-        try:
+        def _build_conversation(entries):
             conversation = []
-            for entry in diary.conversation_log:
+            for entry in entries:
                 sender = "admin"  # agent responses
                 if "PATIENT" in entry.direction or "HELPER" in entry.direction:
                     if "→AGENT" in entry.direction:
@@ -504,15 +688,28 @@ class Gateway:
                     "channel": entry.channel,
                     "timestamp": entry.timestamp.isoformat(),
                 })
+            return conversation
 
-            chat_data = {"conversation": conversation}
-            file_path = f"patient_data/{patient_id}/pre_consultation_chat.json"
+        try:
+            pre_consult_entries = diary.get_conversation("pre_consultation")
+            monitoring_entries = diary.get_conversation("monitoring")
 
+            # Always write pre-consultation chat
+            pre_data = {"conversation": _build_conversation(pre_consult_entries)}
             self._diary_store._gcs.create_file_from_string(
-                _json.dumps(chat_data, indent=2),
-                file_path,
+                _json.dumps(pre_data, indent=2),
+                f"patient_data/{patient_id}/pre_consultation_chat.json",
                 content_type="application/json",
             )
+
+            # Write monitoring chat if there are any monitoring entries
+            if monitoring_entries:
+                mon_data = {"conversation": _build_conversation(monitoring_entries)}
+                self._diary_store._gcs.create_file_from_string(
+                    _json.dumps(mon_data, indent=2),
+                    f"patient_data/{patient_id}/monitoring_chat.json",
+                    content_type="application/json",
+                )
         except Exception as exc:
             logger.warning(
                 "Failed to persist chat history for patient %s: %s",
@@ -534,19 +731,29 @@ class Gateway:
             return diary.model_copy(deep=True), generation
 
         try:
+            t0 = time.monotonic()
             diary, generation = await asyncio.to_thread(
                 self._diary_store.load, event.patient_id
+            )
+            logger.info("  [timing] diary load: %.2fs", time.monotonic() - t0)
+            # Cache for subsequent loads
+            self._diary_cache[event.patient_id] = (
+                diary.model_copy(deep=True), generation,
             )
             return diary, generation
         except DiaryNotFoundError:
             logger.info(
-                "No diary found for patient %s — creating new one",
+                "No diary found for patient %s — creating in-memory (GCS save deferred)",
                 event.patient_id,
             )
-            diary, generation = await asyncio.to_thread(
-                self._diary_store.create,
-                event.patient_id,
-                event.correlation_id,
+            # Create diary in-memory immediately; GCS persistence happens
+            # in the background save after the agent processes the event.
+            diary = PatientDiary.create_new(
+                event.patient_id, event.correlation_id
+            )
+            generation = None  # type: ignore[assignment]
+            self._diary_cache[event.patient_id] = (
+                diary.model_copy(deep=True), generation,
             )
             return diary, generation
 

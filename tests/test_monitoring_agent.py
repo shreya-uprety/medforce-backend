@@ -625,36 +625,36 @@ class TestDeteriorationAssessment:
 
 
 class TestMilestoneMessages:
-    """_generate_milestone_message for different time periods."""
+    """_fallback_milestone_message for different time periods."""
 
     def test_14_day_message(self):
         agent = MonitoringAgent()
         diary = make_diary()
-        msg = agent._generate_milestone_message(14, diary)
+        msg = agent._fallback_milestone_message(14, diary)
         assert "2 weeks" in msg
 
     def test_30_day_message(self):
         agent = MonitoringAgent()
         diary = make_diary()
-        msg = agent._generate_milestone_message(30, diary)
+        msg = agent._fallback_milestone_message(30, diary)
         assert "month" in msg.lower()
 
     def test_60_day_message(self):
         agent = MonitoringAgent()
         diary = make_diary()
-        msg = agent._generate_milestone_message(60, diary)
+        msg = agent._fallback_milestone_message(60, diary)
         assert "2 months" in msg.lower()
 
     def test_90_day_message(self):
         agent = MonitoringAgent()
         diary = make_diary()
-        msg = agent._generate_milestone_message(90, diary)
+        msg = agent._fallback_milestone_message(90, diary)
         assert "90 days" in msg
 
     def test_includes_patient_name(self):
         agent = MonitoringAgent()
         diary = make_diary()
-        msg = agent._generate_milestone_message(14, diary)
+        msg = agent._fallback_milestone_message(14, diary)
         assert "Monitor Patient" in msg
 
 

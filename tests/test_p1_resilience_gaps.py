@@ -225,6 +225,11 @@ class TestGCSDown:
         event = _user_msg("PT-CONC", "Hello")
         result = await gw.process_event(event)
 
+        # Diary save is background — wait for background tasks to finish
+        import asyncio
+        if gw._bg_tasks:
+            await asyncio.gather(*gw._bg_tasks, return_exceptions=True)
+
         # Should have tried multiple times
         assert store.save_call_count >= 2
         # Responses still dispatched

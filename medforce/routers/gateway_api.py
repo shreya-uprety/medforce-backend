@@ -277,7 +277,7 @@ def _detect_document_type(filename: str) -> str:
 @router.get("/chat/{patient_id}")
 async def get_chat_history(patient_id: str):
     """
-    Read the patient's chat history from GCS.
+    Read the patient's pre-consultation chat history from GCS.
 
     Returns the conversation stored at patient_data/{patient_id}/pre_consultation_chat.json.
     """
@@ -300,6 +300,34 @@ async def get_chat_history(patient_id: str):
         return json.loads(content)
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Failed to parse chat history")
+
+
+@router.get("/chat/{patient_id}/monitoring")
+async def get_monitoring_chat_history(patient_id: str):
+    """
+    Read the patient's monitoring chat history from GCS.
+
+    Returns the conversation stored at patient_data/{patient_id}/monitoring_chat.json.
+    """
+    from medforce.dependencies import get_gcs
+
+    gcs = get_gcs()
+    if gcs is None:
+        raise HTTPException(status_code=503, detail="GCS not initialized")
+
+    file_path = f"patient_data/{patient_id}/monitoring_chat.json"
+    content = await asyncio.to_thread(gcs.read_file_as_string, file_path)
+
+    if content is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No monitoring chat history found for patient {patient_id}",
+        )
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse monitoring chat history")
 
 
 @router.get("/documents/{patient_id}")
@@ -331,8 +359,24 @@ async def list_documents(patient_id: str):
 
 @router.get("/diary/{patient_id}")
 async def get_diary(patient_id: str):
-    """Read a patient's current diary state."""
-    from medforce.gateway.setup import get_diary_store
+    """Read a patient's current diary state.
+
+    Checks the gateway's in-memory cache first (always up-to-date),
+    falling back to GCS for cache misses.  This avoids race conditions
+    where responses are dispatched before the diary is persisted.
+    """
+    from medforce.gateway.setup import get_diary_store, get_gateway
+
+    gateway = get_gateway()
+    if gateway is not None:
+        cached = gateway._diary_cache.get(patient_id)
+        if cached is not None:
+            diary, generation = cached
+            return {
+                "patient_id": patient_id,
+                "generation": generation,
+                "diary": diary.model_dump(mode="json"),
+            }
 
     diary_store = get_diary_store()
     if diary_store is None:
@@ -443,8 +487,8 @@ async def gateway_dlq(limit: int = 50):
 
 
 @router.get("/responses/{patient_id}")
-async def get_responses(patient_id: str):
-    """Read test harness stored responses for a patient."""
+async def get_responses(patient_id: str, chat_channel: str | None = None):
+    """Read test harness stored responses for a patient, optionally filtered by chat_channel."""
     from medforce.gateway.setup import get_dispatcher_registry
 
     registry = get_dispatcher_registry()
@@ -461,18 +505,26 @@ async def get_responses(patient_id: str):
         return {"patient_id": patient_id, "count": 0, "responses": []}
 
     responses = harness.get_responses(patient_id)
+    response_list = [
+        {
+            "recipient": r.recipient,
+            "channel": r.channel,
+            "message": r.message,
+            "metadata": r.metadata,
+        }
+        for r in responses
+    ]
+
+    if chat_channel:
+        response_list = [
+            r for r in response_list
+            if r.get("metadata", {}).get("chat_channel") == chat_channel
+        ]
+
     return {
         "patient_id": patient_id,
-        "count": len(responses),
-        "responses": [
-            {
-                "recipient": r.recipient,
-                "channel": r.channel,
-                "message": r.message,
-                "metadata": r.metadata,
-            }
-            for r in responses
-        ],
+        "count": len(response_list),
+        "responses": response_list,
     }
 
 
@@ -709,8 +761,11 @@ async def reset_patient(patient_id: str):
 
     deleted = await asyncio.to_thread(diary_store.delete, patient_id)
 
-    # Clear event log for this patient
+    # Clear in-memory caches so stale data doesn't get served back
     if gateway:
+        gateway._diary_cache.pop(patient_id, None)
+        gateway._processed_events.pop(patient_id, None)
+        gateway._rate_limiter.pop(patient_id, None)
         gateway._event_log = [
             e for e in gateway._event_log
             if e.get("patient_id") != patient_id
@@ -727,6 +782,35 @@ async def reset_patient(patient_id: str):
         "success": True,
         "patient_id": patient_id,
         "diary_deleted": deleted,
+    }
+
+
+@router.post("/admin/reset-booking-registry")
+async def reset_booking_registry():
+    """Clear all booking slot holds. Used by E2E tests to free up slots."""
+    from medforce.gateway.setup import get_gateway
+
+    gateway = get_gateway()
+    if gateway is None:
+        raise HTTPException(status_code=503, detail="Gateway not initialized")
+
+    # Find the booking agent and clear its registry
+    booking_agent = gateway._agents.get("booking")
+    if booking_agent is None:
+        return {"success": False, "detail": "Booking agent not registered"}
+
+    registry = getattr(booking_agent, "_booking_registry", None)
+    if registry is None:
+        return {"success": False, "detail": "No booking registry found"}
+
+    # Clear all holds
+    count_before = len(registry._data.holds)
+    registry._data.holds.clear()
+    registry._save()
+
+    return {
+        "success": True,
+        "holds_cleared": count_before,
     }
 
 

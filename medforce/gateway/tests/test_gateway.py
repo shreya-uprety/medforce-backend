@@ -102,11 +102,22 @@ class InfiniteLoopAgent(BaseAgent):
         )
 
 
+class _MockGCS:
+    """Minimal GCS stub so _persist_chat_history doesn't crash."""
+
+    def create_file_from_string(self, content, path, content_type="text/plain"):
+        pass
+
+    def read_file_as_bytes(self, path):
+        return None
+
+
 class MockDiaryStore:
     """In-memory diary store for testing."""
 
     def __init__(self):
         self._diaries: dict[str, tuple[PatientDiary, int]] = {}
+        self._gcs = _MockGCS()
 
     def load(self, patient_id):
         if patient_id not in self._diaries:
@@ -443,8 +454,14 @@ class TestDiaryCreation:
     @pytest.mark.asyncio
     async def test_new_patient_diary_created(self, gateway, diary_store):
         """First contact from a new patient should auto-create a diary."""
+        import asyncio
+
         event = EventEnvelope.user_message("PT-NEW-001", "Hello")
         result = await gateway.process_event(event)
+
+        # Diary save is a background task — drain before asserting
+        if gateway._bg_tasks:
+            await asyncio.gather(*gateway._bg_tasks, return_exceptions=True)
 
         assert result is not None
         # Diary should now exist in the store
@@ -600,8 +617,14 @@ class TestGatewayScenarios:
     @pytest.mark.asyncio
     async def test_scenario_new_patient_first_message(self, gateway, diary_store):
         """Brand new patient sends first message → diary created, routed to intake."""
+        import asyncio
+
         event = EventEnvelope.user_message("PT-BRAND-NEW", "Hi, I've been referred")
         result = await gateway.process_event(event)
+
+        # Diary save is a background task — drain before asserting
+        if gateway._bg_tasks:
+            await asyncio.gather(*gateway._bg_tasks, return_exceptions=True)
 
         assert result is not None
         diary, _ = diary_store.load("PT-BRAND-NEW")

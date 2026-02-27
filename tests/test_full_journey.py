@@ -499,13 +499,15 @@ class TestClinicalAssessmentFlow:
         agent = ClinicalAgent()
         diary = intake_complete_diary()
         diary.clinical.chief_complaint = "abdominal pain"
-        diary.clinical.sub_phase = ClinicalSubPhase.ASKING_QUESTIONS
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
         diary.clinical.questions_asked = [
             ClinicalQuestion(question="Q1?", answer="A1"),
             ClinicalQuestion(question="Q2?", answer="A2"),
         ]
 
-        event = doc_event(extracted_values={"bilirubin": 8.0, "ALT": 700})
+        event = doc_event(extracted_values={"bilirubin": 90, "ALT": 700})
         result = await agent.process(event, diary)
 
         assert result.updated_diary.header.current_phase == Phase.BOOKING
@@ -561,13 +563,18 @@ class TestClinicalAssessmentFlow:
 
     @pytest.mark.asyncio
     async def test_ready_for_scoring_with_complaint_and_answers(self):
-        """Ready when chief complaint + enough answered questions."""
+        """Ready when chief complaint + enough answered clinical questions + safety topics + docs done."""
         agent = ClinicalAgent()
         diary = intake_complete_diary()
         diary.clinical.chief_complaint = "pain"
+        diary.clinical.meds_addressed = True
+        diary.clinical.allergies_addressed = True
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
         diary.clinical.questions_asked = [
-            ClinicalQuestion(question="Q1?", answer="A1"),
-            ClinicalQuestion(question="Q2?", answer="A2"),
+            ClinicalQuestion(question=f"Q{i}?", answer=f"A{i}")
+            for i in range(5)
         ]
         assert agent._ready_for_scoring(diary) is True
 
@@ -580,9 +587,12 @@ class TestClinicalAssessmentFlow:
 
     @pytest.mark.asyncio
     async def test_ready_with_lab_data_only(self):
-        """Ready with lab data even without chief complaint."""
+        """Ready with lab data even without chief complaint when in doc collection."""
         agent = ClinicalAgent()
         diary = intake_complete_diary()
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
         diary.clinical.documents.append(
             ClinicalDocument(type="lab_results", processed=True, extracted_values={"ALT": 100})
         )
@@ -594,10 +604,10 @@ class TestClinicalRiskScoring:
 
     @pytest.mark.asyncio
     async def test_high_bilirubin_scores_high(self):
-        """Bilirubin > 5 should trigger HIGH risk."""
+        """Bilirubin > 50 µmol/L should trigger HIGH risk."""
         scorer = RiskScorer()
         clinical = ClinicalSection(chief_complaint="pain")
-        result = scorer.score(clinical, {"bilirubin": 6.0})
+        result = scorer.score(clinical, {"bilirubin": 90})
         assert result.risk_level == RiskLevel.HIGH
 
     @pytest.mark.asyncio
@@ -626,10 +636,10 @@ class TestClinicalRiskScoring:
 
     @pytest.mark.asyncio
     async def test_medium_bilirubin(self):
-        """Bilirubin 2-5 should trigger MEDIUM risk."""
+        """Bilirubin 20-50 µmol/L should trigger MEDIUM risk."""
         scorer = RiskScorer()
         clinical = ClinicalSection()
-        result = scorer.score(clinical, {"bilirubin": 3.0})
+        result = scorer.score(clinical, {"bilirubin": 30})
         assert result.risk_level == RiskLevel.MEDIUM
 
     @pytest.mark.asyncio
@@ -650,7 +660,7 @@ class TestClinicalRiskScoring:
         clinical = ClinicalSection(
             chief_complaint="mild nausea",
         )
-        result = scorer.score(clinical, {"bilirubin": 8.0})
+        result = scorer.score(clinical, {"bilirubin": 90})
         assert result.risk_level == RiskLevel.HIGH
         assert result.confidence == 1.0
 
@@ -659,7 +669,7 @@ class TestClinicalRiskScoring:
         """Normal lab values and no keywords → LOW risk."""
         scorer = RiskScorer()
         clinical = ClinicalSection(chief_complaint="mild discomfort")
-        result = scorer.score(clinical, {"ALT": 30, "bilirubin": 0.5})
+        result = scorer.score(clinical, {"ALT": 30, "bilirubin": 10})
         assert result.risk_level in (RiskLevel.LOW, RiskLevel.MEDIUM)
 
     @pytest.mark.asyncio
@@ -1023,7 +1033,7 @@ class TestMonitoringNoSpam:
             patient_id="PT-200",
             days_since_appointment=2,
         )
-        result = agent._handle_heartbeat(event, diary)
+        result = await agent._handle_heartbeat(event, diary)
 
         # Should NOT send a scheduled question
         sent = [q for q in diary.monitoring.communication_plan.questions if q.sent]
@@ -1040,7 +1050,7 @@ class TestMonitoringNoSpam:
             patient_id="PT-200",
             days_since_appointment=7,
         )
-        result = agent._handle_heartbeat(event, diary)
+        result = await agent._handle_heartbeat(event, diary)
 
         assert len(result.responses) == 1
         assert "yellowing" in result.responses[0].message.lower()
@@ -1058,7 +1068,7 @@ class TestMonitoringNoSpam:
             patient_id="PT-200",
             days_since_appointment=7,
         )
-        result = agent._handle_heartbeat(event, diary)
+        result = await agent._handle_heartbeat(event, diary)
 
         # Should NOT resend the day-7 question
         if result.responses:
@@ -1074,7 +1084,7 @@ class TestMonitoringNoSpam:
             patient_id="PT-200",
             days_since_appointment=7,
         )
-        agent._handle_heartbeat(event, diary)
+        await agent._handle_heartbeat(event, diary)
 
         # Should advance to next unsent question's day
         assert diary.monitoring.next_scheduled_check == "14"
@@ -1476,7 +1486,7 @@ class TestLabUploadComparison:
         agent = MonitoringAgent()
         diary = booked_diary()
 
-        event = doc_event(extracted_values={"bilirubin": 6.2, "ALT": 360})
+        event = doc_event(extracted_values={"bilirubin": 3.5, "ALT": 250})
         result = agent._handle_document(event, diary)
 
         assert not any(
@@ -1825,9 +1835,15 @@ class TestEndToEndHappyPath:
         r = await clinical_agent.process(msg_event("No known allergies", "PT-E2E"), diary)
         diary = r.updated_diary
 
-        # Upload labs to trigger scoring
+        # Fast-forward: set diary to COLLECTING_DOCUMENTS with pending requests satisfied
+        # (simulates the agent having prompted for docs and patient having uploaded them)
+        diary.clinical.sub_phase = ClinicalSubPhase.COLLECTING_DOCUMENTS
+        diary.clinical.pending_document_requests = ["blood test results"]
+        diary.clinical.documents_requested = ["blood test results"]
+
+        # Upload labs to trigger scoring (UK units: 30 µmol/L bilirubin = MEDIUM)
         r = await clinical_agent.process(
-            doc_event("PT-E2E", {"bilirubin": 3.0, "ALT": 200}), diary
+            doc_event("PT-E2E", {"bilirubin": 30, "ALT": 200}), diary
         )
         diary = r.updated_diary
 
@@ -1975,8 +1991,8 @@ class TestEndToEndLabDeteriorationPath:
         monitoring_agent = MonitoringAgent()
         diary = booked_diary("PT-STABLE")
 
-        # Upload slightly different but not deteriorating labs
-        event = doc_event("PT-STABLE", {"bilirubin": 6.5, "ALT": 370, "albumin": 27})
+        # Upload slightly different but not deteriorating labs (below absolute thresholds)
+        event = doc_event("PT-STABLE", {"bilirubin": 3.8, "ALT": 280, "albumin": 27})
         r = monitoring_agent._handle_document(event, diary)
 
         assert len(r.emitted_events) == 0
@@ -2005,7 +2021,7 @@ class TestGPRemindersDuringMonitoring:
             patient_id="PT-200",
             days_since_appointment=7,
         )
-        result = agent._handle_heartbeat(event, diary)
+        result = await agent._handle_heartbeat(event, diary)
 
         gp_reminders = [
             e for e in result.emitted_events
@@ -2027,7 +2043,7 @@ class TestGPRemindersDuringMonitoring:
             patient_id="PT-200",
             days_since_appointment=7,
         )
-        result = agent._handle_heartbeat(event, diary)
+        result = await agent._handle_heartbeat(event, diary)
 
         gp_reminders = [
             e for e in result.emitted_events
@@ -2055,7 +2071,7 @@ class TestInactiveMonitoring:
             patient_id="PT-200",
             days_since_appointment=7,
         )
-        result = agent._handle_heartbeat(event, diary)
+        result = await agent._handle_heartbeat(event, diary)
 
         assert len(result.responses) == 0
         assert len(result.emitted_events) == 0
